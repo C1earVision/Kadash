@@ -14,11 +14,12 @@ export default function Chatbot() {
     if (!input.trim()) return;
 
     const newMessage = { role: "User_Message", content: input };
-    let messages = JSON.parse(localStorage.getItem("messages")) || ["Context: "];
-    messages.push(`${newMessage.role}: ${newMessage.content};`);
-    localStorage.setItem("messages", JSON.stringify(messages));
+    let storedMessages = JSON.parse(localStorage.getItem("messages")) || ["Context: "];
+    storedMessages.push(`${newMessage.role}: ${newMessage.content};`);
+    localStorage.setItem("messages", JSON.stringify(storedMessages));
 
-    setMessages((prev) => [...prev, newMessage]);
+    // Show user's message and temporary "Searching..." message
+    setMessages((prev) => [...prev, newMessage, { role: "AI_Message", content: "Searching..." }]);
     setInput("");
     setLoading(true);
 
@@ -26,18 +27,28 @@ export default function Chatbot() {
       const res = await axios.post("http://127.0.0.1:8000/query", {
         question: JSON.parse(localStorage.getItem("messages")).join(" "),
       });
-      const aiMessage = { role: "AI_Message", content: res.data.answer, agent:res.data.agent };
-      let messages = JSON.parse(localStorage.getItem("messages")) || [];
-      messages.push(`${aiMessage.role}: ${aiMessage.content};`);
-      localStorage.setItem("messages", JSON.stringify(messages));
-      setMessages((prev) => [...prev, aiMessage]);
-      console.log(localStorage.getItem("messages"))
+
+      const aiMessage = {
+        role: "AI_Message",
+        content: res.data.answer,
+        agent: res.data.agent,
+      };
+
+      let updatedMessages = JSON.parse(localStorage.getItem("messages")) || [];
+      updatedMessages.push(`${aiMessage.role}: ${aiMessage.content};`);
+      localStorage.setItem("messages", JSON.stringify(updatedMessages));
+
+      // Remove "Searching..." and add real AI message
+      setMessages((prev) => {
+        const filtered = prev.filter((msg) => msg.content !== "Searching...");
+        return [...filtered, aiMessage];
+      });
     } catch (err) {
       console.log(err);
-      setMessages((prev) => [
-        ...prev,
-        { role: "AI_Message", content: "Error connecting to AI." },
-      ]);
+      setMessages((prev) => {
+        const filtered = prev.filter((msg) => msg.content !== "Searching...");
+        return [...filtered, { role: "AI_Message", content: "Error connecting to AI." }];
+      });
     } finally {
       setLoading(false);
     }
@@ -61,23 +72,17 @@ export default function Chatbot() {
                     : "bg-gray-700 text-gray-100 text-left"
                 }`}
               >
-                <div
-                  key={i}
-                  className={`p-3 rounded-md text-sm ${
-                    msg.role === "User_Message"
-                      ? "bg-blue-700 text-white text-right"
-                      : "bg-gray-700 text-gray-100 text-left"
-                  }`}
-                >
-                  <p className="font-semibold">
-                    {msg.role === "User_Message" ? "You" : "AI"}
+                <p className="font-semibold">
+                  {msg.role === "User_Message" ? "You" : "AI"}
+                </p>
+                {msg.agent && (
+                  <p className="text-xs italic text-gray-300">
+                    – {msg.agent === "use_rag_agent" ? "RAG AGENT USED" : "SEARCH AGENT USED"}
                   </p>
-                  {msg.agent && (
-                    <p className="text-xs italic text-gray-300">– {msg.agent == 'use_rag_agent'?'RAG AGENT USED':'SEARCH AGENT USED'}</p>
-                  )}
-                  <p>{msg.content}</p>
-                </div>
-
+                )}
+                <p className={msg.content === "Searching..." ? "italic text-gray-400" : ""}>
+                  {msg.content}
+                </p>
               </div>
             ))}
           </div>
