@@ -57,54 +57,84 @@ export default function DashBoard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0F0F1A] text-white flex flex-col px-6 py-8">
-      {/* Chat Messages Area */}
-      <div className="flex-1 overflow-y-auto space-y-6 max-w-5xl mx-auto w-full pr-2">
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`text-sm leading-relaxed ${
-              msg.role === "User_Message" ? "text-right ml-auto" : "text-left"
-            }`}
-          >
-            <p
-              className={`${
-                msg.role === "User_Message" ? "text-gray-300" : "text-white"
-              } whitespace-pre-line`}
-            >
-              {msg.content === "Searching..." ? (
-                <span className="italic text-gray-500">Searching...</span>
-              ) : (
-                msg.content
-              )}
-            </p>
-            {msg.agent && (
-              <p className="text-xs italic text-gray-500 mt-1">
-                – {msg.agent === "use_rag_agent" ? "RAG AGENT USED" : "SEARCH AGENT USED"}
-              </p>
-            )}
-          </div>
-        ))}
-      </div>
+    <div className="flex min-h-screen bg-[#0F0F1A] text-white">
+      {/* Sidebar */}
+      <aside className="w-64 bg-[#151522] p-6 flex flex-col justify-between">
+        <div>
+          <h1 className="text-3xl font-bold mb-8">rwazi</h1>
+          <nav className="space-y-4 text-gray-300 text-sm">
+            <div className="opacity-60">Lumora</div>
+            <div>
+              Insights <span className="ml-2 text-xs bg-gray-600 px-2 py-0.5 rounded">BETA</span>
+            </div>
+            <div className="text-blue-500">
+              Sena <span className="ml-2 text-xs bg-gray-600 px-2 py-0.5 rounded">BETA</span>
+            </div>
+            <div className="opacity-60">Report</div>
+          </nav>
+        </div>
 
-      {/* Input Box */}
-      <div className="flex items-center gap-2 mt-6 max-w-5xl w-full mx-auto">
-        <input
-          type="text"
-          placeholder="what would be the low hanging fruit opp..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyPress}
-          className="flex-1 bg-[#1C1C2D] text-white placeholder-gray-400 border border-gray-700 rounded px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-600"
-        />
-        <button
-          onClick={sendMessage}
-          disabled={loading}
-          className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 px-5 py-2 rounded"
-        >
-          {loading ? "Sending..." : "Send"}
-        </button>
-      </div>
+        <div className="space-y-2">
+          <button className="bg-blue-700 w-full py-2 rounded">Plans</button>
+          <button className="bg-blue-500 w-full py-2 rounded">+ New Order</button>
+          <div className="mt-4 text-xs bg-green-700 p-3 rounded text-white">
+            Joseph Rutakangwa
+            <br />
+            <span className="text-gray-300 text-[0.75rem]">joseph@rwazi.com</span>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Chat Area */}
+      <main className="flex-1 flex flex-col justify-between px-8 py-6">
+        {/* Chat Messages */}
+        <div className="flex-1 overflow-y-auto space-y-6 pr-4">
+          {messages.map((msg, i) => (
+            <div
+              key={i}
+              className={`text-sm leading-relaxed max-w-4xl ${
+                msg.role === "User_Message" ? "text-right ml-auto" : "text-left"
+              }`}
+            >
+              <p
+                className={`${
+                  msg.role === "User_Message" ? "text-gray-300" : "text-white"
+                } whitespace-pre-line`}
+              >
+                {msg.content === "Searching..." ? (
+                  <span className="italic text-gray-500">Searching...</span>
+                ) : (
+                  msg.content
+                )}
+              </p>
+              {msg.agent && (
+                <p className="text-xs italic text-gray-500 mt-1">
+                  – {msg.agent === "use_rag_agent" ? "RAG AGENT USED" : "SEARCH AGENT USED"}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Input Box */}
+        <div className="flex items-center gap-2 mt-6">
+          <input
+            type="text"
+            placeholder="what would be the low hanging fruit opp..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyPress}
+            className="flex-1 bg-[#1C1C2D] text-white placeholder-gray-400 border border-gray-700 rounded px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-600"
+          />
+          <button
+            onClick={sendMessage}
+            disabled={loading}
+            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 px-5 py-2 rounded"
+          >
+            {loading ? "Sending..." : "Send"}
+          </button>
+        </div>
+      </main>
     </div>
   );
 }
