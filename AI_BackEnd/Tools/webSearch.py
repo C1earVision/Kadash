@@ -8,7 +8,6 @@ from Utils.TavilySearch import TavilySearchTool
 class webSearch:
   def __init__(self):
     load_dotenv()
-    self.url = "https://api.tavily.com/search"
     self.tavily_api_key = os.environ.get("TAVILY_API_KEY")
     self.tavily_search = TavilySearchTool()
     self.search_tool_list = self.setup_tool()
