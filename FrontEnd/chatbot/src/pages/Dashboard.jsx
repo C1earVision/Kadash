@@ -8,24 +8,30 @@ export default function DashBoard() {
 
   useEffect(() => {
     localStorage.setItem("messages", JSON.stringify(["Context: "]));
+    localStorage.setItem("admin", JSON.stringify(false))
   }, []);
 
   const sendMessage = async () => {
     if (!input.trim()) return;
-
+    // after doing login page adjust the tokin to be dynamic
     const newMessage = { role: "User_Message", content: input };
     let storedMessages = JSON.parse(localStorage.getItem("messages")) || ["Context: "];
     storedMessages.push(`${newMessage.role}: ${newMessage.content};`);
     localStorage.setItem("messages", JSON.stringify(storedMessages));
+    
 
     setMessages((prev) => [...prev, newMessage, { role: "AI_Message", content: "Searching..." }]);
     setInput("");
     setLoading(true);
-
+    // console.log(localStorage.getItem("messages"))
+    console.log(localStorage.getItem("user"))
     try {
-      const res = await axios.post("http://127.0.0.1:8000/query", {
-        question: JSON.parse(localStorage.getItem("messages")).join(" "),
-      });
+      const payLoad = {
+        question: JSON.parse(localStorage.getItem("messages")).join(" ")+` token:${JSON.parse(localStorage.getItem("user")).token}`,
+        admin: JSON.parse(localStorage.getItem("user")).user.AdminState
+      }
+      console.log(payLoad)
+      const res = await axios.post("http://127.0.0.1:8000/query", payLoad);
 
       const aiMessage = {
         role: "AI_Message",
@@ -45,7 +51,7 @@ export default function DashBoard() {
       console.log(err);
       setMessages((prev) => {
         const filtered = prev.filter((msg) => msg.content !== "Searching...");
-        return [...filtered, { role: "AI_Message", content: "Error connecting to AI." }];
+        return [...filtered, { role: "AI_Message", content: `Error connecting to AI. ${err.response.data.error}` }];
       });
     } finally {
       setLoading(false);
@@ -109,7 +115,7 @@ export default function DashBoard() {
               </p>
               {msg.agent && (
                 <p className="text-xs italic text-gray-500 mt-1">
-                  – {msg.agent === "use_rag_agent" ? "RAG AGENT USED" : "SEARCH AGENT USED"}
+                  – {msg.agent === "use_rag_agent" ? "RAG AGENT USED" : "use_web_search_agent"? "SEARCH AGENT USED":"CRUD Agent"}
                 </p>
               )}
             </div>

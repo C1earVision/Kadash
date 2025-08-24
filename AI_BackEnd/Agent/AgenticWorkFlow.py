@@ -3,6 +3,7 @@ from langgraph.graph import StateGraph, MessagesState, END, START
 from langgraph.prebuilt import ToolNode, tools_condition
 from Tools.webSearch import webSearch
 from Tools.searchDataBase import DataBaseSearch
+from Tools.CRUD import databaseCrudOperations
 
 
 
@@ -61,6 +62,19 @@ class RagAgent(GeneralAgent):
         self.tools = []
         self.tools.extend([*self.dataBaseSearch.dataBaseSearchToolList,
                            *self.web_search.search_tool_list])
+        self.llm = self.llm.bind_tools(tools=self.tools)
+
+    def __call__(self):
+      return self.build_graph(True)
+    
+
+
+class CrudAgent(GeneralAgent):
+    def __init__(self, system_prompt, model_provider = "groq"):
+        super().__init__(system_prompt, model_provider)
+        self.databaseCrudOperations = databaseCrudOperations()
+        self.tools = []
+        self.tools.extend([*self.databaseCrudOperations.dataBaseCrudToolList])
         self.llm = self.llm.bind_tools(tools=self.tools)
 
     def __call__(self):

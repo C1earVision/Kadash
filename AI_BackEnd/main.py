@@ -1,10 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from Agent.AgenticWorkFlow import GeneralAgent, SearchAgent, RagAgent
+from Agent.AgenticWorkFlow import GeneralAgent, SearchAgent, RagAgent, CrudAgent
 from starlette.responses import JSONResponse
 from Prompt.generalSysPrompt import GENERAL_SYSTEM_PROMPT
 from Prompt.SearchSysPrompt import SEARCH_SYSTEM_PROMPT
 from Prompt.RagSysPropmt import RAG_SYSTEM_PROMPT
+from Prompt.dashboardSysPrompt import DASHBOARD_SYSTEM_PROMPT
 
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -22,6 +23,7 @@ app.add_middleware(
 class QueryRequest(BaseModel):
     # userContext: str
     question: str
+    admin: bool
 
 def use_agent(messages, agent):
     output = agent.invoke(messages)
@@ -38,7 +40,7 @@ async def query_travel_agent(query:QueryRequest):
         graph = GeneralAgent(system_prompt=GENERAL_SYSTEM_PROMPT)
         general_agent = graph()
         
-
+        print(query)
         messages={
             "messages": [query.question]
             }
@@ -55,7 +57,15 @@ async def query_travel_agent(query:QueryRequest):
             graph = RagAgent(system_prompt=RAG_SYSTEM_PROMPT)
             rag_agent = graph()
             final_answer = use_agent(messages, rag_agent)
-        
+        elif agent_choice == 'use_crud_agent':
+            if query.admin:
+                print("Used CRUD Agent")
+                graph = CrudAgent(system_prompt=DASHBOARD_SYSTEM_PROMPT)
+                crud_agent = graph()
+                final_answer = use_agent(messages, crud_agent)
+            else:
+                final_answer = "User has no access to this information"
+        print(final_answer)
         return {"answer": final_answer, "agent": agent_choice}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
