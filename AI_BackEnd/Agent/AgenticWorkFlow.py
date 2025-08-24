@@ -2,8 +2,12 @@ from Utils.ModelLoader import modelLoader
 from langgraph.graph import StateGraph, MessagesState, END, START
 from langgraph.prebuilt import ToolNode, tools_condition
 from Tools.webSearch import webSearch
-from Tools.searchDataBase import DataBaseSearch
 from Tools.CRUD import databaseCrudOperations
+from langchain_community.agent_toolkits import SQLDatabaseToolkit
+from langchain_openai import ChatOpenAI
+from langchain.agents import create_sql_agent
+from DB.connect import dataBaseConnection
+
 
 
 
@@ -57,11 +61,13 @@ class SearchAgent(GeneralAgent):
 class RagAgent(GeneralAgent):
     def __init__(self, system_prompt, model_provider = "groq"):
         super().__init__(system_prompt, model_provider)
-        self.dataBaseSearch = DataBaseSearch()
+        # self.dataBaseSearch = DataBaseSearch()
+        self.dataBaseConnection = dataBaseConnection()
+        self.db = self.dataBaseConnection.connection()
+        self.toolkit = SQLDatabaseToolkit(db=self.db, llm=self.llm)
         self.web_search = webSearch()
         self.tools = []
-        self.tools.extend([*self.dataBaseSearch.dataBaseSearchToolList,
-                           *self.web_search.search_tool_list])
+        self.tools.extend([*self.web_search.search_tool_list, *self.toolkit.get_tools()])
         self.llm = self.llm.bind_tools(tools=self.tools)
 
     def __call__(self):

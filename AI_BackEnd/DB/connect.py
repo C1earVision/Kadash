@@ -1,8 +1,8 @@
 import pyodbc
 import os
 from dotenv import load_dotenv
-
-
+from langchain_community.utilities import SQLDatabase
+from urllib.parse import quote_plus
 # Create the connection string
 
 class dataBaseConnection:
@@ -14,13 +14,17 @@ class dataBaseConnection:
         self.password = os.environ.get("DATABASE_PASS")
 
     def connection(self):
-        conn = pyodbc.connect(
-          f'DRIVER={{ODBC Driver 17 for SQL Server}};'
-          f'SERVER={self.server};'
-          f'DATABASE={self.database};'
-          f'UID={self.username};'
-          f'PWD={self.password}'
+        connection_string = (
+            f"mssql+pyodbc://{self.username}:{quote_plus(self.password)}@{self.server}/{self.database}"
+            "?driver=ODBC+Driver+17+for+SQL+Server"
         )
-        return conn
+
+        try:
+            db = SQLDatabase.from_uri(connection_string)
+            print("✅ Successfully connected to the database.")
+        except Exception as e:
+            print(f"❌ Failed to connect to the database: {e}")
+            db = None
+        return db
 
 
