@@ -28,7 +28,7 @@ export default function Chatbot() {
         question: JSON.parse(localStorage.getItem("messages")).join(" "),
         admin: JSON.parse(localStorage.getItem("user")).user.AdminState
       }
-      const res = await axios.post("http://127.0.0.1:8000/query", payLoad);
+      const res = await axios.post("http://127.0.0.1:9000/query", payLoad);
 
       const aiMessage = {
         role: "AI_Message",

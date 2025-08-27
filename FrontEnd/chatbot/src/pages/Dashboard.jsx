@@ -5,7 +5,6 @@ export default function DashBoard() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
-
   useEffect(() => {
     localStorage.setItem("messages", JSON.stringify(["Context: "]));
     localStorage.setItem("admin", JSON.stringify(false))
@@ -23,26 +22,37 @@ export default function DashBoard() {
     setMessages((prev) => [...prev, newMessage, { role: "AI_Message", content: "Searching..." }]);
     setInput("");
     setLoading(true);
-    // console.log(localStorage.getItem("messages"))
     console.log(localStorage.getItem("user"))
     try {
       const payLoad = {
         question: JSON.parse(localStorage.getItem("messages")).join(" ")+` token:${JSON.parse(localStorage.getItem("user")).token}`,
         admin: JSON.parse(localStorage.getItem("user")).user.AdminState
       }
-      console.log(payLoad)
-      const res = await axios.post("http://127.0.0.1:8000/query", payLoad);
-
-      const aiMessage = {
-        role: "AI_Message",
-        content: res.data.answer,
-        agent: res.data.agent,
-      };
+      const res = await axios.post("http://127.0.0.1:9000/query", payLoad);
+      console.log(res)
+      if (res.data.answer.includes("http")){
+        const llm_response_object = JSON.parse(res.data.answer)
+        const llm_response = llm_response_object.content
+        const image_url = llm_response_object.image;
+        var aiMessage = {
+          role: "AI_Message",
+          content: llm_response,
+          agent: res.data.agent,
+          image: image_url
+        };
+      }else{
+        console.log("else used")
+        var aiMessage = {
+          role: "AI_Message",
+          content: res.data.answer,
+          agent: res.data.agent,
+        };
+    }
 
       let updatedMessages = JSON.parse(localStorage.getItem("messages")) || [];
       updatedMessages.push(`${aiMessage.role}: ${aiMessage.content};`);
       localStorage.setItem("messages", JSON.stringify(updatedMessages));
-
+      console.log(localStorage.getItem("messages"))
       setMessages((prev) => {
         const filtered = prev.filter((msg) => msg.content !== "Searching...");
         return [...filtered, aiMessage];
@@ -51,7 +61,7 @@ export default function DashBoard() {
       console.log(err);
       setMessages((prev) => {
         const filtered = prev.filter((msg) => msg.content !== "Searching...");
-        return [...filtered, { role: "AI_Message", content: `Error connecting to AI. ${err.response.data.error}` }];
+        return [...filtered, { role: "AI_Message", content: `Error connecting to AI. ${err.response?.data?.error}` }];
       });
     } finally {
       setLoading(false);
@@ -107,11 +117,22 @@ export default function DashBoard() {
                   msg.role === "User_Message" ? "text-gray-300" : "text-white"
                 } whitespace-pre-line`}
               >
-                {msg.content === "Searching..." ? (
-                  <span className="italic text-gray-500">Searching...</span>
-                ) : (
-                  msg.content
-                )}
+              {msg.content === "Searching..." ? (
+                <span className="italic text-gray-500">Searching...</span>
+              ) : (
+                <>
+                  <div>{msg.content}</div>
+                  {msg.image && (
+                    <div>
+                      <img
+                        src={msg.image}
+                        alt="Generated visualization"
+                        style={{ maxWidth: "100%", height: "auto", marginTop: "4px" }}
+                      />
+                    </div>
+                  )}
+                </>
+              )}
               </p>
               {msg.agent && (
                 <p className="text-xs italic text-gray-500 mt-1">

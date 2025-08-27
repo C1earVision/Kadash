@@ -1,12 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from Agent.AgenticWorkFlow import GeneralAgent, SearchAgent, RagAgent, CrudAgent
+from Agent.AgenticWorkFlow import GeneralAgent, SearchAgent, RagAgent, CrudAgent, analysisAgent
 from starlette.responses import JSONResponse
 from Prompt.generalSysPrompt import GENERAL_SYSTEM_PROMPT
 from Prompt.SearchSysPrompt import SEARCH_SYSTEM_PROMPT
 from Prompt.RagSysPropmt import RAG_SYSTEM_PROMPT
 from Prompt.dashboardSysPrompt import DASHBOARD_SYSTEM_PROMPT
-
+from Prompt.analysisAgent import ANALYSIS_AGENT_SYSTEM_PROMPT
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from pydantic import BaseModel
 load_dotenv()
@@ -34,6 +35,8 @@ def use_agent(messages, agent):
     else:
         return str(output)
 
+
+app.mount("/static", StaticFiles(directory="tmp"), name="static")
 @app.post("/query")
 async def query_travel_agent(query:QueryRequest):
     try:
@@ -54,15 +57,23 @@ async def query_travel_agent(query:QueryRequest):
             final_answer = use_agent(messages, search_agent)
         elif agent_choice == "use_rag_agent":
             print("Used Rag Agent")
-            graph = RagAgent(system_prompt=RAG_SYSTEM_PROMPT)
+            graph = RagAgent(system_prompt=RAG_SYSTEM_PROMPT, model_provider='openai')
             rag_agent = graph()
             final_answer = use_agent(messages, rag_agent)
         elif agent_choice == 'use_crud_agent':
             if query.admin:
                 print("Used CRUD Agent")
-                graph = CrudAgent(system_prompt=DASHBOARD_SYSTEM_PROMPT)
+                graph = CrudAgent(system_prompt=DASHBOARD_SYSTEM_PROMPT, model_provider='openai')
                 crud_agent = graph()
                 final_answer = use_agent(messages, crud_agent)
+            else:
+                final_answer = "User has no access to this information"
+        elif agent_choice == 'use_data_analysis_and_visualization_agent':
+            if query.admin:
+                print("data analysis and visualization agent used")
+                graph = analysisAgent(system_prompt=ANALYSIS_AGENT_SYSTEM_PROMPT, model_provider="openai")
+                analysis_agent = graph()
+                final_answer = use_agent(messages, analysis_agent)
             else:
                 final_answer = "User has no access to this information"
         print(final_answer)

@@ -20,6 +20,7 @@ class dataBaseConnection:
         )
 
         try:
+            # , engine_args={"echo": True} for logging the sql query
             db = SQLDatabase.from_uri(connection_string)
             print("✅ Successfully connected to the database.")
         except Exception as e:

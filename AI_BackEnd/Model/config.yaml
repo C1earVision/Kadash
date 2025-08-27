@@ -1,7 +1,7 @@
 llm:
   openai:
     provider: "openai"
-    model_name: "o4-mini"
+    model_name: "moonshotai/kimi-k2-instruct"
   groq:
     provider: "groq"
-    model_name: "llama3-70b-8192"
+    model_name: "llama-3.3-70b-versatile"
