@@ -280,8 +280,4 @@ docker build -t python-sandbox .
 | `*` | `/api/v1/user/*` | JWT | Protected routes (CRUD, dashboard data) |
 
 ---
-
-<div align="center">
-  <sub>Built with ❤️ as a graduation project</sub>
-</div>
 ]]>
