@@ -15,7 +15,7 @@
 
 ## Overview
 
-ClearVision is a full-stack **Agentic RAG** (Retrieval-Augmented Generation) chatbot designed for PC hardware companies. It uses a **multi-agent architecture** where a General Router Agent analyzes user queries and delegates them to the most appropriate specialized agent — whether that's searching the web, querying a product database, performing CRUD operations, or generating data visualizations.
+Kadash is a full-stack **Agentic RAG** (Retrieval-Augmented Generation) chatbot designed for PC hardware companies. It uses a **multi-agent architecture** where a General Router Agent analyzes user queries and delegates them to the most appropriate specialized agent — whether that's searching the web, querying a product database, performing CRUD operations, or generating data visualizations.
 
 ### Key Features
 
@@ -98,7 +98,7 @@ The system uses a **LangGraph** state-machine workflow. Every incoming query fir
 ## Project Structure
 
 ```
-📁 ClearVision/
+📁 Project/
 ├── 📁 AI_BackEnd/              # Python — FastAPI + LangGraph agents
 │   ├── main.py                 # FastAPI server & /query endpoint
 │   ├── Agent/
