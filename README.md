@@ -1,4 +1,4 @@
-﻿<![CDATA[<div align="center">
+﻿<div align="center">
 
 # Agentic RAG Chatbot
 
@@ -280,4 +280,3 @@ docker build -t python-sandbox .
 | `*` | `/api/v1/user/*` | JWT | Protected routes (CRUD, dashboard data) |
 
 ---
-]]>
