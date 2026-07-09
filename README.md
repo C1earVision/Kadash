@@ -1,6 +1,6 @@
 ﻿<div align="center">
 
-# Agentic RAG Chatbot
+# Kadash
 
 **An intelligent multi-agent chatbot for PC hardware companies, powered by LangGraph & RAG**
 
