@@ -53,8 +53,11 @@ services:
           type: web
           name: node-backend
           property: host
-          # Render provides the full URL; prefix with https://
-          envVarKey: NODE_BACKEND_URL
+      - key: AI_BACKEND_URL
+        fromService:
+          type: web
+          name: ai-backend
+          property: host
 
   # ── Node.js Backend ───────────────────────────────────────────────────────
   - type: web

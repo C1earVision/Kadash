@@ -15,5 +15,7 @@ langchain_openai
 langgraph
 langchain-google-community[places]
 psycopg2-binary
-
-
+matplotlib
+pandas
+seaborn
+numpy
