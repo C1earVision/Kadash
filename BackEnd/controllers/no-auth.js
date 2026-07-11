@@ -1,8 +1,6 @@
 const CustomAPIError = require('../errors/custom-error')
 const { StatusCodes } = require('http-status-codes')
 const dbConnect = require('../db/dbconfig')
-const sql = require('mssql');
-
 
 const getAllProducts = async (req, res) => {
   const query = req.query;
@@ -15,20 +13,18 @@ const getAllProducts = async (req, res) => {
     if (queryKeys) {
       if (queryKeys.includes('Name')) {
         const nameIndex = queryKeys.indexOf('Name');
-        const result = await db.request()
-          .input('Name', sql.VarChar, `%${queryValues[nameIndex]}%`)
-          .query(`        
-            SELECT p.ProductId, p.Name, p.Brand, p.Price, p.Category,
-                   STRING_AGG(CONVERT(VARCHAR(MAX), i.Img, 1), ',') AS Images
-            FROM Product p
-            LEFT JOIN Product_IMG i ON p.ProductId = i.ProductId
-            WHERE p.Name LIKE @Name AND p.Category IN (
-              'GPU', 'CPU', 'STORAGE','MEMORY','MOTHERBOARD','CPU COOLER','POWER SUPPLY','CASE'
-            )
-            GROUP BY p.ProductId, p.Name, p.Brand, p.Price, p.Category
-          `);
+        const result = await db.query(`        
+          SELECT p."ProductId", p."Name", p."Brand", p."Price", p."Category",
+                 STRING_AGG(encode(i."Img", 'hex'), ',') AS "Images"
+          FROM "Product" p
+          LEFT JOIN "Product_IMG" i ON p."ProductId" = i."ProductId"
+          WHERE p."Name" ILIKE $1 AND p."Category" IN (
+            'GPU', 'CPU', 'STORAGE','MEMORY','MOTHERBOARD','CPU COOLER','POWER SUPPLY','CASE'
+          )
+          GROUP BY p."ProductId", p."Name", p."Brand", p."Price", p."Category"
+        `, [`%${queryValues[nameIndex]}%`]);
 
-        const processedProducts = result.recordset.map(Product => {
+        const processedProducts = result.rows.map(Product => {
           const images = Product.Images
             ? Product.Images.split(',').map((image) => {
                 const cleanImage = image.startsWith('0x') ? image.slice(2) : image;
@@ -50,29 +46,45 @@ const getAllProducts = async (req, res) => {
         queryValues[orderByIndex] = value;
       }
 
-      const request = db.request();
-      const result = await request
-        .input('QueryValue', queryValues[0])
-        .input('QueryValue2', queryValues[1])
-        .input('QueryValue3', queryValues[2])
-        .query(`
-          SELECT p.ProductId, p.Name, p.Brand, p.Description, p.Rating, p.Price, p.StockQuantity, 
-                p.Category, p.ReleaseDate,
-                STRING_AGG(CONVERT(VARCHAR(MAX), i.Img, 1), ',') AS Images
-          FROM Product p
-          LEFT JOIN Product_IMG i ON p.ProductId = i.ProductId
-          WHERE p.Category IN (
-            'GPU', 'CPU', 'STORAGE','MEMORY','MOTHERBOARD','CPU COOLER','POWER SUPPLY','CASE'
-          )
-          ${queryKeys[0] !== 'ORDER BY' ? `AND ${queryKeys[0]} = @QueryValue` : ''}  
-          ${queryKeys[1] && queryKeys[1] !== 'ORDER BY' ? `AND ${queryKeys[1]} = @QueryValue2` : ''} 
-          ${queryKeys[2] && queryKeys[2] !== 'ORDER BY' ? `AND ${queryKeys[2]} = @QueryValue3` : ''} 
-          GROUP BY p.ProductId, p.Name, p.Brand, p.Description, p.Rating, p.Price, p.StockQuantity, 
-                  p.ReleaseDate, p.Category
-          ${queryKeys.includes('ORDER BY') ? `ORDER BY ${queryValues[queryKeys.indexOf('ORDER BY')]}` : ''} 
-        `);
+      const queryParams = [];
+      let queryText = `
+        SELECT p."ProductId", p."Name", p."Brand", p."Description", p."Rating", p."Price", p."StockQuantity", 
+              p."Category", p."ReleaseDate",
+              STRING_AGG(encode(i."Img", 'hex'), ',') AS "Images"
+        FROM "Product" p
+        LEFT JOIN "Product_IMG" i ON p."ProductId" = i."ProductId"
+        WHERE p."Category" IN (
+          'GPU', 'CPU', 'STORAGE','MEMORY','MOTHERBOARD','CPU COOLER','POWER SUPPLY','CASE'
+        )
+      `;
 
-      const processedProducts = result.recordset.map(Product => {
+      let paramCount = 0;
+      for (let i = 0; i < queryKeys.length; i++) {
+        const key = queryKeys[i];
+        if (key !== 'ORDER BY') {
+          paramCount++;
+          // Escaping key in double quotes to match Postgres casing
+          queryText += ` AND p."${key}" = $${paramCount}`;
+          queryParams.push(queryValues[i]);
+        }
+      }
+
+      queryText += ` GROUP BY p."ProductId", p."Name", p."Brand", p."Description", p."Rating", p."Price", p."StockQuantity", 
+                              p."ReleaseDate", p."Category"`;
+
+      if (queryKeys.includes('ORDER BY')) {
+        const orderByVal = queryValues[queryKeys.indexOf('ORDER BY')];
+        const parts = orderByVal.trim().split(/\s+/);
+        if (parts.length > 0) {
+          const col = parts[0];
+          const dir = parts[1] || '';
+          queryText += ` ORDER BY p."${col}" ${dir}`;
+        }
+      }
+
+      const result = await db.query(queryText, queryParams);
+
+      const processedProducts = result.rows.map(Product => {
         const images = Product.Images
           ? Product.Images.split(',').map((image) => {
               const cleanImage = image.startsWith('0x') ? image.slice(2) : image;
@@ -84,21 +96,20 @@ const getAllProducts = async (req, res) => {
 
       res.status(StatusCodes.OK).json({ Products: processedProducts });
     } else {
-      const request = db.request();
-      const result = await request.query(`
-        SELECT p.ProductId, p.Name, p.Brand, p.Description, p.Rating, p.Price, p.StockQuantity, 
-               p.Category, p.ReleaseDate,
-               STRING_AGG(CONVERT(VARCHAR(MAX), i.Img, 1), ',') AS Images
-        FROM Product p
-        LEFT JOIN Product_IMG i ON p.ProductId = i.ProductId
-        WHERE p.Category IN (
+      const result = await db.query(`
+        SELECT p."ProductId", p."Name", p."Brand", p."Description", p."Rating", p."Price", p."StockQuantity", 
+               p."Category", p."ReleaseDate",
+               STRING_AGG(encode(i."Img", 'hex'), ',') AS "Images"
+        FROM "Product" p
+        LEFT JOIN "Product_IMG" i ON p."ProductId" = i."ProductId"
+        WHERE p."Category" IN (
           'GPU', 'CPU', 'STORAGE','MEMORY','MOTHERBOARD','CPU COOLER','POWER SUPPLY','CASE'
         )
-        GROUP BY p.ProductId, p.Name, p.Brand, p.Description, p.Rating, p.Price, p.StockQuantity, 
-                 p.ReleaseDate, p.Category
+        GROUP BY p."ProductId", p."Name", p."Brand", p."Description", p."Rating", p."Price", p."StockQuantity", 
+                 p."ReleaseDate", p."Category"
       `);
 
-      const processedProducts = result.recordset.map(Product => {
+      const processedProducts = result.rows.map(Product => {
         const images = Product.Images
           ? Product.Images.split(',').map((image) => {
               const cleanImage = image.startsWith('0x') ? image.slice(2) : image;
@@ -116,30 +127,28 @@ const getAllProducts = async (req, res) => {
   }
 };
 
-
-
 const getProduct = async (req, res) => {
   const { id } = req.params;
 
   try {
     const db = await dbConnect;
 
-    const result = await db.request().query(`
-      SELECT p.ProductId, p.Name, p.Brand, p.Description, p.Rating, p.Price, p.StockQuantity, 
-             p.Category, p.ReleaseDate,
-             STRING_AGG(CONVERT(VARCHAR(MAX), i.Img, 1), ',') AS Images
-      FROM Product p
-      LEFT JOIN Product_IMG i ON p.ProductId = i.ProductId
-      WHERE p.ProductId = ${id}
-      GROUP BY p.ProductId, p.Name, p.Brand, p.Description, p.Rating, p.Price, 
-               p.StockQuantity, p.Category, p.ReleaseDate
-    `);
+    const result = await db.query(`
+      SELECT p."ProductId", p."Name", p."Brand", p."Description", p."Rating", p."Price", p."StockQuantity", 
+             p."Category", p."ReleaseDate",
+             STRING_AGG(encode(i."Img", 'hex'), ',') AS "Images"
+      FROM "Product" p
+      LEFT JOIN "Product_IMG" i ON p."ProductId" = i."ProductId"
+      WHERE p."ProductId" = $1
+      GROUP BY p."ProductId", p."Name", p."Brand", p."Description", p."Rating", p."Price", 
+               p."StockQuantity", p."Category", p."ReleaseDate"
+    `, [id]);
 
-    if (result.recordset.length === 0) {
+    if (result.rows.length === 0) {
       return res.status(StatusCodes.NOT_FOUND).json({ message: "Product not found" });
     }
 
-    const Product = result.recordset[0];
+    const Product = result.rows[0];
     const imagesArray = Product.Images
       ? Product.Images.split(',').map(image => {
           const cleanImage = image.startsWith('0x') ? image.slice(2) : image;
@@ -161,9 +170,6 @@ const getProduct = async (req, res) => {
     throw new CustomAPIError('Error querying the database', StatusCodes.BAD_REQUEST);
   }
 };
-
-
-
 
 module.exports = {
   getAllProducts,

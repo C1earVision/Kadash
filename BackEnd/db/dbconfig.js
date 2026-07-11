@@ -1,26 +1,28 @@
-const sql = require("mssql");
+const { Pool } = require('pg');
 
-const dbConfig = {
-  server: "DESKTOP-39J7HPU",
-  user:"Ruxuis",
-  password:"ParCore9@",         
-  database: "HardWare",    
-  options: {
-    encrypt: false,                  
-    trustServerCertificate: true,
-    trustedConnection:false,
-    enableArithAbort:true,
-    instancename:"SQLEXPRESS",
-  },
-  port:1433
+const cleanPassword = (pw) => {
+  if (!pw) return pw;
+  if ((pw.startsWith('"') && pw.endsWith('"')) || (pw.startsWith("'") && pw.endsWith("'"))) {
+    return pw.slice(1, -1);
+  }
+  return pw;
 };
 
+const dbConfig = {
+  host: process.env.DATABASE_SERVER || "localhost",
+  port: parseInt(process.env.DATABASE_PORT || "5432", 10),
+  user: process.env.DATABASE_USER_NAME || "postgres",
+  password: cleanPassword(process.env.DATABASE_PASS || "postgres"),
+  database: process.env.DATABASE_NAME || "HardWare"
+};
 
+const pool = new Pool(dbConfig);
+console.log("PostgreSQL Pool Configured with:", { ...dbConfig, password: dbConfig.password ? '****' : null });
 
-const poolPromise = new sql.ConnectionPool(dbConfig)
-  .connect()
-  .then(pool => {
-    console.log("Connected to SQL Server");
+const poolPromise = pool.connect()
+  .then(client => {
+    console.log("Connected to PostgreSQL successfully!");
+    client.release();
     return pool;
   })
   .catch(err => {

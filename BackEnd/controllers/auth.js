@@ -3,7 +3,6 @@ const {StatusCodes} = require('http-status-codes')
 const dbConnect = require('../db/dbconfig')
 const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
-const sql = require('mssql');
 
 const createJWT = function (admin, _id, name){
   return jwt.sign({admin:admin ,customerId:_id, name:name}, process.env.JWT_SECRET, {expiresIn:process.env.JWT_LIFETIME})
@@ -12,7 +11,7 @@ const createJWT = function (admin, _id, name){
 
 const encryptPass = async function(pass){
   const salt = await bcrypt.genSalt(10)
-  password = await bcrypt.hash(pass, salt)
+  const password = await bcrypt.hash(pass, salt)
   return password
 }
 
@@ -23,117 +22,106 @@ const comparePassword = async function (sentPass, originalPass){
 
 const register = async (req,res)=>{
   const {password, name, email, dob, country, city, street, state, zip, phoneNumbers} = req.body
-  pass = await encryptPass(password)
+  const pass = await encryptPass(password)
   const db = await dbConnect;
 
-  await db.request()
-  .input('Password', sql.VarChar, pass)  
-  .input('Name', sql.VarChar, name)         
-  .input('Email', sql.VarChar, email)         
-  .input('DateOfBirth', sql.Date, dob)       
-  .input('Country', sql.VarChar, country)   
-  .input('City', sql.VarChar, city)           
-  .input('Street', sql.VarChar, street)       
-  .input('State', sql.VarChar, state)       
-  .input('ZIP', sql.Int, zip)                  
-  .query(`
-    INSERT INTO Customer (
-      Password, 
-      Name, 
-      Email, 
-      DateOfBirth, 
-      Country, 
-      City, 
-      Street, 
-      [State], 
-      ZIP
+  // Insert customer and return the generated CustomerId
+  const insertCustomerResult = await db.query(`
+    INSERT INTO "Customer" (
+      "Password", 
+      "Name", 
+      "Email", 
+      "DateOfBirth", 
+      "Country", 
+      "City", 
+      "Street", 
+      "State", 
+      "ZIP"
     ) 
     VALUES (
-      @Password, 
-      @Name, 
-      @Email, 
-      @DateOfBirth, 
-      @Country, 
-      @City, 
-      @Street, 
-      @State, 
-      @ZIP
-    );
-  `);
+      $1, 
+      $2, 
+      $3, 
+      $4, 
+      $5, 
+      $6, 
+      $7, 
+      $8, 
+      $9
+    )
+    RETURNING "CustomerId";
+  `, [pass, name, email, dob, country, city, street, state, zip]);
 
+  const customerId = insertCustomerResult.rows[0].CustomerId;
 
-  const user = await db.request()
-  .input('Email', sql.VarChar, email)
-  .query(`SELECT * FROM Customer WHERE email = @Email`)
-  
-  phoneNumbers.forEach(async phoneNumber => {
-    await db.request()
-    .input('CustomerId', sql.Int, user.recordset[0].CustomerId)  
-    .input('Phone', sql.Int, phoneNumber)                      
-    .query(`
-      INSERT INTO CPhone
-      VALUES (
-        @CustomerId,
-        @Phone
-      );
-    `);
-  });
-  await db.request()
-  .input('CustomerId', sql.Int, user.recordset[0].CustomerId)
-  .query("INSERT INTO Cart VALUES (@CustomerId)")
-  user.recordset[0] = {...user.recordset[0], phoneNumbers}
-  const token = createJWT(user.recordset[0].AdminState, user.recordset[0].CustomerId, user.recordset[0].Name)
-  res.status(StatusCodes.CREATED).json({user:user.recordset[0], token})
+  for (const phoneNumber of phoneNumbers) {
+    await db.query(`
+      INSERT INTO "CPhone" ("CustomerId", "Phone")
+      VALUES ($1, $2);
+    `, [customerId, phoneNumber]);
+  }
+
+  await db.query(`INSERT INTO "Cart" ("CustomerId") VALUES ($1)`, [customerId]);
+
+  const userResult = await db.query(`
+    SELECT 
+      "CustomerId", "Name", "Email", "Password", "Country", "City", "Street", "State", "ZIP", "AdminState"
+    FROM "Customer" 
+    WHERE "Email" = $1
+  `, [email]);
+
+  const user = { ...userResult.rows[0], phoneNumbers };
+  const token = createJWT(user.AdminState, user.CustomerId, user.Name);
+  res.status(StatusCodes.CREATED).json({user, token});
 }
 
 const login = async (req,res)=>{
   const {email ,password} = req.body
   const db = await dbConnect;
-  const user = await db.request()
-  .input('Email', sql.NVarChar, email)
-  .query(`
+  const result = await db.query(`
     SELECT 
-      c.CustomerId,
-      c.Name,
-      c.Email,
-      c.Password,
-      c.Country,
-      c.City,
-      c.Street,
-      c.State,
-      c.AdminState,
-      STRING_AGG(cp.Phone, ',') AS PhoneNumbers
+      c."CustomerId",
+      c."Name",
+      c."Email",
+      c."Password",
+      c."Country",
+      c."City",
+      c."Street",
+      c."State",
+      c."AdminState",
+      STRING_AGG(cp."Phone", ',') AS "PhoneNumbers"
     FROM 
-      Customer c
+      "Customer" c
     INNER JOIN 
-      CPhone cp ON c.CustomerId = cp.CustomerId
+      "CPhone" cp ON c."CustomerId" = cp."CustomerId"
     WHERE 
-      c.Email = @Email
+      c."Email" = $1
     GROUP BY 
-      c.CustomerId, 
-      c.Name, 
-      c.Email, 
-      c.Password, 
-      c.Country, 
-      c.City, 
-      c.Street, 
-      c.State,
-      c.AdminState
-  `);
+      c."CustomerId", 
+      c."Name", 
+      c."Email", 
+      c."Password", 
+      c."Country", 
+      c."City", 
+      c."Street", 
+      c."State",
+      c."AdminState"
+  `, [email]);
 
-  user.recordset[0].PhoneNumbers = user.recordset[0].PhoneNumbers.split(',')
-  if(!user){
+  if(result.rows.length === 0){
     throw new CustomAPIError('Email or password wrong', StatusCodes.UNAUTHORIZED)
   }
-  
 
-  const passIsMatch = await comparePassword(password, user.recordset[0].Password)
+  const user = result.rows[0];
+  user.PhoneNumbers = user.PhoneNumbers ? user.PhoneNumbers.split(',') : [];
+
+  const passIsMatch = await comparePassword(password, user.Password)
   if(!passIsMatch){
     throw new CustomAPIError('Password doesnt match', StatusCodes.UNAUTHORIZED)
   }
-  console.log(user.recordset[0])
-  const token = createJWT(user.recordset[0].AdminState, user.recordset[0].CustomerId, user.recordset[0].Name)
-  res.status(StatusCodes.OK).json({user:user.recordset[0], token})
+  console.log(user)
+  const token = createJWT(user.AdminState, user.CustomerId, user.Name)
+  res.status(StatusCodes.OK).json({user, token})
 }
 
 

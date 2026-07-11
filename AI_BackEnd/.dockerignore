@@ -1,0 +1,10 @@
+.env
+.venv
+env/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+tmp/
+Docker/
+.python-version

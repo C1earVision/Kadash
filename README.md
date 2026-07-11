@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
 
 # Agentic RAG Chatbot
 
@@ -21,7 +21,7 @@ Kadash is a full-stack **Agentic RAG** (Retrieval-Augmented Generation) chatbot 
 
 - 🤖 **Multi-Agent Routing** — Intelligent query classification routes each message to the best-fit agent
 - 🔍 **Web Search** — Real-time internet search via Tavily for up-to-date hardware info
-- 🗃️ **RAG over SQL** — Natural language queries translated to SQL against the company's MSSQL product database
+- 🗃️ **RAG over SQL** — Natural language queries translated to SQL against the company's PostgreSQL product database
 - ✏️ **CRUD Operations** — Admin-only agent for adding/modifying products in the database
 - 📊 **Data Analysis & Visualization** — Generates charts and analytics via sandboxed Python execution in Docker
 - 🔐 **Authentication** — JWT-based auth with role-based access control (Admin / User)
@@ -45,13 +45,13 @@ Kadash is a full-stack **Agentic RAG** (Retrieval-Augmented Generation) chatbot 
 │       :3000       │        │           :9000                │
 │                   │        │                                │
 │  • JWT Auth       │        │  ┌─────────────────────────┐   │
-│  • User CRUD      │        │  │   General Router Agent  │   │
-│  • MongoDB Users  │        │  │   (LangGraph + Groq)    │   │
-│  • MSSQL Proxy    │        │  └────┬──┬──┬──┬──────────┘   │
-│  • Security       │        │       │  │  │  │              │
-│    (Helmet, XSS,  │        │  ┌────▼──▼──▼──▼──────────┐   │
-│     Rate Limit)   │        │  │ Search │ RAG  │  CRUD  │   │
-└───────────────────┘        │  │ Agent  │Agent │ Agent  │   │
+│  • PostgreSQL     │        │  │   General Router Agent  │   │
+│  • Users & Data   │        │  │   (LangGraph + Groq)    │   │
+│  • Security       │        │  └────┬──┬──┬──┬──────────┘   │
+│    (Helmet, XSS,  │        │       │  │  │  │              │
+│     Rate Limit)   │        │  ┌────▼──▼──▼──▼──────────┐   │
+└───────────────────┘        │  │ Search │ RAG  │  CRUD  │   │
+                             │  │ Agent  │Agent │ Agent  │   │
                              │  │        │      │        │   │
                              │  │  ┌─────┴──────┴────┐   │   │
                              │  │  │ Analysis Agent  │   │   │
@@ -60,10 +60,10 @@ Kadash is a full-stack **Agentic RAG** (Retrieval-Augmented Generation) chatbot 
                              │  └────────────────────────┘   │
                              └──────┬──────────┬─────────────┘
                                     │          │
-                              ┌─────▼───┐  ┌───▼──────┐
-                              │  MSSQL  │  │  Tavily  │
-                              │ Database│  │ Web API  │
-                              └─────────┘  └──────────┘
+                               ┌──────────┐  ┌───▼──────┐
+                               │PostgreSQL│  │  Tavily  │
+                               │ Database │  │ Web API  │
+                               └──────────┘  └──────────┘
 ```
 
 ---
@@ -73,12 +73,12 @@ Kadash is a full-stack **Agentic RAG** (Retrieval-Augmented Generation) chatbot 
 | Layer | Technology |
 |---|---|
 | **AI / Agents** | LangChain · LangGraph · OpenAI · Groq · Tavily |
-| **AI Backend** | Python 3.11+ · FastAPI · Uvicorn · Pydantic |
-| **Backend** | Node.js · Express · Mongoose (MongoDB) · MSSQL |
+| **AI Backend** | Python 3.11+ · FastAPI · Uvicorn · Pydantic · psycopg2 |
+| **Backend** | Node.js · Express · pg (node-postgres) |
 | **Frontend** | React 18 · Vite · Tailwind CSS · shadcn/ui · MUI |
-| **Database** | Microsoft SQL Server (products) · MongoDB (users) |
+| **Database** | PostgreSQL (products, users, orders) |
 | **Security** | JWT · Helmet · XSS-Clean · Rate Limiting · bcrypt |
-| **DevOps** | Docker (sandboxed Python execution) |
+| **DevOps** | Docker (sandboxed Python execution · Render deployment) |
 
 ---
 
@@ -105,7 +105,7 @@ The system uses a **LangGraph** state-machine workflow. Every incoming query fir
 │   │   └── AgenticWorkFlow.py  # Agent class hierarchy (General → Search/RAG/CRUD/Analysis)
 │   ├── Prompt/                 # System prompts for each agent
 │   ├── Tools/                  # Tool implementations (web search, CRUD, Python runner)
-│   ├── DB/                     # MSSQL database connection via SQLAlchemy
+│   ├── DB/                     # PostgreSQL connection via psycopg2
 │   ├── Utils/                  # Model loader, Tavily search wrapper
 │   ├── Docker/                 # Dockerfile for sandboxed Python execution
 │   └── req.txt                 # Python dependencies
@@ -115,7 +115,7 @@ The system uses a **LangGraph** state-machine workflow. Every incoming query fir
 │   ├── controllers/            # Auth, public, and protected route handlers
 │   ├── routes/                 # Route definitions (auth, no-auth, req-auth)
 │   ├── middleware/             # JWT auth middleware, error handler
-│   └── db/                     # MongoDB connection
+│   └── db/                     # PostgreSQL connection & schema init (pg)
 │
 ├── 📁 FrontEnd/chatbot/        # React — Vite SPA
 │   ├── src/
@@ -136,8 +136,7 @@ The system uses a **LangGraph** state-machine workflow. Every incoming query fir
 - **Python** 3.11+
 - **Node.js** 16+
 - **Docker** (for the Analysis Agent's sandboxed execution)
-- **MSSQL Server** with your product database
-- **MongoDB** instance for user data
+- **PostgreSQL 14+** (all data — products, users, orders)
 - API keys for **OpenAI** / **Groq** and **Tavily**
 
 ### 1. Clone the Repository
@@ -209,18 +208,25 @@ docker build -t python-sandbox .
 | `OPENAI_API_KEY` | OpenAI API key for LLM calls |
 | `GROQ_API_KEY` | Groq API key (used for the router agent) |
 | `TAVILY_API_KEY` | Tavily API key for web search |
-| `DATABASE_SERVER` | MSSQL server hostname |
-| `DATABASE_NAME` | MSSQL database name |
-| `DATABASE_USER_NAME` | MSSQL username |
-| `DATABASE_PASS` | MSSQL password |
+| `API_URL` | Node.js backend base URL (e.g. `http://localhost:3000/api/v1`) |
+| `DATABASE_SERVER` | PostgreSQL host |
+| `DATABASE_PORT` | PostgreSQL port (default: `5432`) |
+| `DATABASE_NAME` | PostgreSQL database name |
+| `DATABASE_USER_NAME` | PostgreSQL username |
+| `DATABASE_PASS` | PostgreSQL password |
 
 ### Backend (`BackEnd/.env`)
 
 | Variable | Description |
 |---|---|
-| `MONGO_URI` | MongoDB connection string |
 | `JWT_SECRET` | Secret key for JWT token signing |
+| `JWT_LIFETIME` | Token expiry (default: `30d`) |
 | `PORT` | Server port (default: `3000`) |
+| `DATABASE_SERVER` | PostgreSQL host |
+| `DATABASE_PORT` | PostgreSQL port (default: `5432`) |
+| `DATABASE_NAME` | PostgreSQL database name |
+| `DATABASE_USER_NAME` | PostgreSQL username |
+| `DATABASE_PASS` | PostgreSQL password |
 
 ---
 

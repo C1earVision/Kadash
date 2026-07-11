@@ -24,9 +24,19 @@ export default function Chatbot() {
     setLoading(true);
 
     try {
+      const user = JSON.parse(localStorage.getItem("user"));
+      if (!user) {
+        setMessages((prev) => {
+          const filtered = prev.filter((msg) => msg.content !== "Searching...");
+          return [...filtered, { role: "AI_Message", content: "Please log in first to use the chatbot." }];
+        });
+        setLoading(false);
+        return;
+      }
+
       const payLoad = {
         question: JSON.parse(localStorage.getItem("messages")).join(" "),
-        admin: JSON.parse(localStorage.getItem("user")).user.AdminState
+        admin: user.user.AdminState
       }
       const res = await axios.post("http://127.0.0.1:9000/query", payLoad);
 

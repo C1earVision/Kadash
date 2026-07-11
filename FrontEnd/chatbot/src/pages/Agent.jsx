@@ -16,10 +16,16 @@ function DashBoard() {
 
   useEffect(() => {
     const fetchProducts = async () => {
+      const user = JSON.parse(localStorage.getItem("user"));
+      if (!user) {
+        setError("Please log in first to view products");
+        setLoading(false);
+        return;
+      }
       try {
         const res = await axios.get("http://localhost:3000/api/v1/products", {
           headers: {
-            Authorization: `Bearer ${JSON.parse(localStorage.getItem("user")).token}`,
+            Authorization: `Bearer ${user.token}`,
           },
         });
         setProducts(res.data.Products);
@@ -45,10 +51,15 @@ function DashBoard() {
 
   const handleDelete = async (id) => {
     if (!window.confirm("Are you sure you want to delete this product?")) return;
+    const user = JSON.parse(localStorage.getItem("user"));
+    if (!user) {
+      alert("❌ You must be logged in");
+      return;
+    }
     try {
       await axios.delete(`http://localhost:3000/api/v1/user/admin/${id}`, {
         headers: {
-          Authorization: `Bearer ${JSON.parse(localStorage.getItem("user")).token}`,
+          Authorization: `Bearer ${user.token}`,
         },
       });
       setProducts((prev) => prev.filter((p) => p.ProductId !== id));
@@ -231,11 +242,21 @@ function Agent() {
     setLoading(true);
 
     try {
+      const user = JSON.parse(localStorage.getItem("user"));
+      if (!user) {
+        setMessages((prev) => {
+          const filtered = prev.filter((msg) => msg.content !== "Searching...");
+          return [...filtered, { role: "AI_Message", content: "Please log in first to use the agent." }];
+        });
+        setLoading(false);
+        return;
+      }
+
       const payLoad = {
         question:
           JSON.parse(localStorage.getItem("messages")).join(" ") +
-          ` token:${JSON.parse(localStorage.getItem("user")).token}`,
-        admin: JSON.parse(localStorage.getItem("user")).user.AdminState,
+          ` token:${user.token}`,
+        admin: user.user.AdminState,
       };
       const res = await axios.post("http://127.0.0.1:9000/query", payLoad);
 

@@ -1,9 +1,7 @@
-import pyodbc
 import os
 from dotenv import load_dotenv
 from langchain_community.utilities import SQLDatabase
 from urllib.parse import quote_plus
-# Create the connection string
 
 class dataBaseConnection:
     def __init__(self):
@@ -12,20 +10,17 @@ class dataBaseConnection:
         self.database = os.environ.get("DATABASE_NAME")
         self.username = os.environ.get("DATABASE_USER_NAME")
         self.password = os.environ.get("DATABASE_PASS")
+        self.port = os.environ.get("DATABASE_PORT", "5432")
 
     def connection(self):
         connection_string = (
-            f"mssql+pyodbc://{self.username}:{quote_plus(self.password)}@{self.server}/{self.database}"
-            "?driver=ODBC+Driver+17+for+SQL+Server"
+            f"postgresql+psycopg2://{self.username}:{quote_plus(self.password)}@{self.server}:{self.port}/{self.database}"
         )
 
         try:
-            # , engine_args={"echo": True} for logging the sql query
             db = SQLDatabase.from_uri(connection_string)
-            print("✅ Successfully connected to the database.")
+            print("Successfully connected to PostgreSQL database.")
         except Exception as e:
-            print(f"❌ Failed to connect to the database: {e}")
+            print(f"Failed to connect to the database: {e}")
             db = None
         return db
-
-

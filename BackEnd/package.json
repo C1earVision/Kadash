@@ -23,7 +23,7 @@
     "joi": "^17.4.0",
     "jsonwebtoken": "^8.5.1",
     "mongoose": "^5.13.2",
-    "mssql": "^11.0.1",
+    "pg": "^8.11.0",
     "multer": "^1.4.5-lts.1",
     "rate-limiter": "^0.2.0",
     "save-dev": "^0.0.1-security",

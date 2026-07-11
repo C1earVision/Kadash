@@ -14,5 +14,6 @@ langchain_groq
 langchain_openai
 langgraph
 langchain-google-community[places]
+psycopg2-binary
 
 
