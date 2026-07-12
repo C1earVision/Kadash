@@ -9,7 +9,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "-": "^0.0.1",
     "bcryptjs": "^2.4.3",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
@@ -26,7 +25,6 @@
     "pg": "^8.11.0",
     "multer": "^1.4.5-lts.1",
     "rate-limiter": "^0.2.0",
-    "save-dev": "^0.0.1-security",
     "sharp": "^0.33.5",
     "swagger-ui-express": "^4.1.6",
     "xss-clean": "^0.1.1",
