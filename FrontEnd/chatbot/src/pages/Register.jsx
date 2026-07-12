@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
-import '../css/dist/leaflet.css';
+import 'leaflet/dist/leaflet.css';
 
 import axios from 'axios';
 // import logo from '../images/Logo.png';
@@ -75,7 +75,7 @@ const Register = () => {
           const user = await axios.post(url, {
             ...data
           });
-          
+
           localStorage.setItem('user', JSON.stringify(user.data));
           const adminState = user.data.user.AdminState;
           navigate(adminState === 1 ? '/agent' : '/chatbot');
