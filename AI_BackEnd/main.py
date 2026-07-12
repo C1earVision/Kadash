@@ -10,6 +10,7 @@ from Prompt.analysisAgent import ANALYSIS_AGENT_SYSTEM_PROMPT
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from pydantic import BaseModel
+import os
 load_dotenv()
 
 app = FastAPI()
@@ -36,6 +37,7 @@ def use_agent(messages, agent):
         return str(output)
 
 
+os.makedirs("tmp", exist_ok=True)
 app.mount("/static", StaticFiles(directory="tmp"), name="static")
 @app.post("/query")
 async def query_travel_agent(query:QueryRequest):
