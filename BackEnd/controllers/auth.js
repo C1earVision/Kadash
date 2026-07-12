@@ -25,7 +25,11 @@ const register = async (req,res)=>{
   const pass = await encryptPass(password)
   const db = await dbConnect;
 
+  // Coerce zip to integer or null — empty string fails INTEGER column
+  const zipValue = zip !== '' && zip != null ? parseInt(zip, 10) : null;
+
   // Insert customer and return the generated CustomerId
+  // Note: alias to "id" because pg lowercases all column names by default
   const insertCustomerResult = await db.query(`
     INSERT INTO "Customer" (
       "Password", 
@@ -36,7 +40,8 @@ const register = async (req,res)=>{
       "City", 
       "Street", 
       "State", 
-      "ZIP"
+      "ZIP",
+      "AdminState"
     ) 
     VALUES (
       $1, 
@@ -47,12 +52,13 @@ const register = async (req,res)=>{
       $6, 
       $7, 
       $8, 
-      $9
+      $9,
+      1
     )
-    RETURNING "CustomerId";
-  `, [pass, name, email, dob, country, city, street, state, zip]);
+    RETURNING "CustomerId" AS id;
+  `, [pass, name, email, dob, country, city, street, state, zipValue]);
 
-  const customerId = insertCustomerResult.rows[0].CustomerId;
+  const customerId = insertCustomerResult.rows[0].id;
 
   for (const phoneNumber of phoneNumbers) {
     await db.query(`
@@ -65,7 +71,16 @@ const register = async (req,res)=>{
 
   const userResult = await db.query(`
     SELECT 
-      "CustomerId", "Name", "Email", "Password", "Country", "City", "Street", "State", "ZIP", "AdminState"
+      "CustomerId"  AS "CustomerId",
+      "Name"        AS "Name",
+      "Email"       AS "Email",
+      "Password"    AS "Password",
+      "Country"     AS "Country",
+      "City"        AS "City",
+      "Street"      AS "Street",
+      "State"       AS "State",
+      "ZIP"         AS "ZIP",
+      "AdminState"  AS "AdminState"
     FROM "Customer" 
     WHERE "Email" = $1
   `, [email]);

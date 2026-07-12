@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 // import logo from '../images/Logo.png';
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
+import { API_URL } from "../config/api";
 
 
 
@@ -28,14 +29,15 @@ const Login = () => {
     }
 
     try {
-      const url = `http://localhost:3000/api/v1/auth/login`
+      const url = `${API_URL}/auth/login`
       const user = await axios.post(url, {
         email: email,
         password: password,
       });
       localStorage.setItem('user', JSON.stringify(user.data));
       console.log(JSON.parse(localStorage.getItem('user')))
-      navigate('/')
+      const adminState = user.data.user.AdminState;
+      navigate(adminState === 1 ? '/agent' : '/chatbot')
     } catch (error) {
       alert('Email or password wrong')
       console.error('Error logging in:', error);

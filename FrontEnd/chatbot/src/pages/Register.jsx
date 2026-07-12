@@ -5,6 +5,7 @@ import '../css/dist/leaflet.css';
 import axios from 'axios';
 // import logo from '../images/Logo.png';
 import { Link, useNavigate } from "react-router-dom";
+import { API_URL } from "../config/api";
 
 
 
@@ -70,13 +71,14 @@ const Register = () => {
       if (data) {
         try {
           console.log('Form Submitted:', { ...data });
-          const url = `http://localhost:3000/api/v1/auth/register`;
+          const url = `${API_URL}/auth/register`;
           const user = await axios.post(url, {
             ...data
           });
           
           localStorage.setItem('user', JSON.stringify(user.data));
-          navigate('/');
+          const adminState = user.data.user.AdminState;
+          navigate(adminState === 1 ? '/agent' : '/chatbot');
         } catch (error) {
           alert('Email or password wrong');
           console.error('Error logging in:', error);

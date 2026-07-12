@@ -1,4 +1,4 @@
-# ---- Render Deployment Dockerfile for AI Backend ----
+# ---- Railway Deployment Dockerfile for AI Backend ----
 FROM python:3.11-slim
 
 # Install system dependencies needed for psycopg2-binary and other libs
@@ -21,5 +21,5 @@ COPY . .
 EXPOSE 8000
 
 # Start the FastAPI app with uvicorn
-# Render sets the PORT env var; fall back to 8000
+# Railway sets the PORT env var; fall back to 8000
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]

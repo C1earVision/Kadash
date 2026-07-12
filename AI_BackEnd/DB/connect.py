@@ -13,8 +13,13 @@ class dataBaseConnection:
         self.port = os.environ.get("DATABASE_PORT", "5432")
 
     def connection(self):
+        use_ssl = (
+            os.environ.get("DATABASE_SSL", "").lower() == "true"
+            or (self.server and "supabase" in self.server)
+        )
+        ssl_param = "?sslmode=require" if use_ssl else ""
         connection_string = (
-            f"postgresql+psycopg2://{self.username}:{quote_plus(self.password)}@{self.server}:{self.port}/{self.database}"
+            f"postgresql+psycopg2://{self.username}:{quote_plus(self.password)}@{self.server}:{self.port}/{self.database}{ssl_param}"
         )
 
         try:

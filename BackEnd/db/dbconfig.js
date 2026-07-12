@@ -8,12 +8,17 @@ const cleanPassword = (pw) => {
   return pw;
 };
 
+const useSsl =
+  process.env.DATABASE_SSL === "true" ||
+  (process.env.DATABASE_SERVER || "").includes("supabase");
+
 const dbConfig = {
   host: process.env.DATABASE_SERVER || "localhost",
   port: parseInt(process.env.DATABASE_PORT || "5432", 10),
   user: process.env.DATABASE_USER_NAME || "postgres",
   password: cleanPassword(process.env.DATABASE_PASS || "postgres"),
-  database: process.env.DATABASE_NAME || "HardWare"
+  database: process.env.DATABASE_NAME || "HardWare",
+  ...(useSsl && { ssl: { rejectUnauthorized: false } }),
 };
 
 const pool = new Pool(dbConfig);

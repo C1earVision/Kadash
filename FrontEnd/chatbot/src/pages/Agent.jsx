@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { Copy, Trash, Search } from "lucide-react"; // icon for copy button
+import { API_URL, AI_API_URL } from "../config/api";
 
 
 function DashBoard() {
@@ -23,7 +24,7 @@ function DashBoard() {
         return;
       }
       try {
-        const res = await axios.get("http://localhost:3000/api/v1/products", {
+        const res = await axios.get(`${API_URL}/products`, {
           headers: {
             Authorization: `Bearer ${user.token}`,
           },
@@ -57,7 +58,7 @@ function DashBoard() {
       return;
     }
     try {
-      await axios.delete(`http://localhost:3000/api/v1/user/admin/${id}`, {
+      await axios.delete(`${API_URL}/user/admin/${id}`, {
         headers: {
           Authorization: `Bearer ${user.token}`,
         },
@@ -258,7 +259,7 @@ function Agent() {
           ` token:${user.token}`,
         admin: user.user.AdminState,
       };
-      const res = await axios.post("http://127.0.0.1:9000/query", payLoad);
+      const res = await axios.post(`${AI_API_URL}/query`, payLoad);
 
       let aiMessage;
       if (res.data.answer.includes("http")) {

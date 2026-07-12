@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
+import { API_URL, AI_API_URL } from "../config/api";
 
 export default function Chatbot() {
   const [input, setInput] = useState("");
@@ -38,7 +39,7 @@ export default function Chatbot() {
         question: JSON.parse(localStorage.getItem("messages")).join(" "),
         admin: user.user.AdminState
       }
-      const res = await axios.post("http://127.0.0.1:9000/query", payLoad);
+      const res = await axios.post(`${AI_API_URL}/query`, payLoad);
 
       const aiMessage = {
         role: "AI_Message",

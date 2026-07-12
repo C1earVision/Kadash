@@ -14,6 +14,13 @@ const port = parseInt(process.env.DATABASE_PORT || '5432', 10);
 const user = process.env.DATABASE_USER_NAME || 'postgres';
 const password = cleanPassword(process.env.DATABASE_PASS || 'postgres');
 const dbName = process.env.DATABASE_NAME || 'HardWare';
+const useSsl =
+  process.env.DATABASE_SSL === 'true' ||
+  server.includes('supabase');
+const skipCreateDatabase =
+  process.env.SKIP_CREATE_DATABASE === 'true' || server.includes('supabase');
+
+const sslConfig = useSsl ? { ssl: { rejectUnauthorized: false } } : {};
 
 const ddl = `
 CREATE TABLE IF NOT EXISTS "Customer" (
@@ -97,31 +104,36 @@ CREATE TABLE IF NOT EXISTS "Review" (
 `;
 
 async function main() {
-  const client = new Client({
-    host: server,
-    port: port,
-    user: user,
-    password: password,
-    database: 'postgres'
-  });
+  if (!skipCreateDatabase) {
+    const client = new Client({
+      host: server,
+      port: port,
+      user: user,
+      password: password,
+      database: 'postgres',
+      ...sslConfig,
+    });
 
-  try {
-    await client.connect();
-    console.log('Connected to template database "postgres" to check database presence...');
-    
-    const res = await client.query("SELECT 1 FROM pg_database WHERE datname = $1", [dbName]);
-    if (res.rowCount === 0) {
-      console.log(`Database "${dbName}" does not exist. Creating...`);
-      await client.query(`CREATE DATABASE "${dbName}"`);
-      console.log(`Database "${dbName}" created successfully.`);
-    } else {
-      console.log(`Database "${dbName}" already exists.`);
+    try {
+      await client.connect();
+      console.log('Connected to template database "postgres" to check database presence...');
+
+      const res = await client.query('SELECT 1 FROM pg_database WHERE datname = $1', [dbName]);
+      if (res.rowCount === 0) {
+        console.log(`Database "${dbName}" does not exist. Creating...`);
+        await client.query(`CREATE DATABASE "${dbName}"`);
+        console.log(`Database "${dbName}" created successfully.`);
+      } else {
+        console.log(`Database "${dbName}" already exists.`);
+      }
+    } catch (err) {
+      console.error('Error checking/creating database:', err);
+      process.exit(1);
+    } finally {
+      await client.end();
     }
-  } catch (err) {
-    console.error('Error checking/creating database:', err);
-    process.exit(1);
-  } finally {
-    await client.end();
+  } else {
+    console.log('Skipping CREATE DATABASE step (Supabase / managed Postgres).');
   }
 
   const dbClient = new Client({
@@ -129,7 +141,8 @@ async function main() {
     port: port,
     user: user,
     password: password,
-    database: dbName
+    database: dbName,
+    ...sslConfig,
   });
 
   try {

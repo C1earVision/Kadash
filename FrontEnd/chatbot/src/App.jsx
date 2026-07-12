@@ -9,7 +9,8 @@ function App() {
   return (
     <>
       <Routes>
-        <Route path="/" element={<Chatbot />} />
+        <Route path="/" element={<Register />} />
+        <Route path="/chatbot" element={<Chatbot />} />
         <Route path="/agent" element={<Agent />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />

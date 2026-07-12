@@ -78,7 +78,7 @@ Kadash is a full-stack **Agentic RAG** (Retrieval-Augmented Generation) chatbot 
 | **Frontend** | React 18 · Vite · Tailwind CSS · shadcn/ui · MUI |
 | **Database** | PostgreSQL (products, users, orders) |
 | **Security** | JWT · Helmet · XSS-Clean · Rate Limiting · bcrypt |
-| **DevOps** | Docker (sandboxed Python execution · Render deployment) |
+| **DevOps** | Docker (sandboxed Python execution · Railway deployment) |
 
 ---
 
@@ -214,6 +214,7 @@ docker build -t python-sandbox .
 | `DATABASE_NAME` | PostgreSQL database name |
 | `DATABASE_USER_NAME` | PostgreSQL username |
 | `DATABASE_PASS` | PostgreSQL password |
+| `DATABASE_SSL` | Set to `true` for Supabase (auto-detected if host contains `supabase`) |
 
 ### Backend (`BackEnd/.env`)
 
@@ -227,6 +228,7 @@ docker build -t python-sandbox .
 | `DATABASE_NAME` | PostgreSQL database name |
 | `DATABASE_USER_NAME` | PostgreSQL username |
 | `DATABASE_PASS` | PostgreSQL password |
+| `DATABASE_SSL` | Set to `true` for Supabase (auto-detected if host contains `supabase`) |
 
 ---
 
@@ -284,5 +286,89 @@ docker build -t python-sandbox .
 | `POST` | `/api/v1/auth/login` | — | Login and receive JWT |
 | `GET` | `/api/v1/*` | — | Public routes |
 | `*` | `/api/v1/user/*` | JWT | Protected routes (CRUD, dashboard data) |
+
+---
+
+## Deployment (Vercel + Supabase)
+
+This project uses a **split deployment**:
+
+| Component | Platform | Why |
+|---|---|---|
+| Frontend (React) | **Vercel** | Static Vite SPA |
+| Node API (Express) | **Vercel** | Serverless functions via `BackEnd/api/index.js` |
+| PostgreSQL | **Supabase** | Managed Postgres (replaces Render DB) |
+| AI Backend (FastAPI) | **Railway** | Long LLM requests, Python agents, chart file serving |
+
+> The AI backend **cannot** run on Vercel — agent workflows exceed serverless timeouts and need persistent disk for generated charts.
+
+### Step 1: Set up Supabase
+
+1. Create a project at [supabase.com](https://supabase.com).
+2. Open **SQL Editor** and run `supabase/schema.sql`.
+3. Copy connection details from **Settings → Database**:
+   - Use the **Session pooler** host for Vercel serverless (port `5432`).
+   - User format: `postgres.<project-ref>`
+   - Database name: `postgres`
+
+### Step 2: Deploy Node API on Vercel
+
+1. Import the repo at [vercel.com](https://vercel.com).
+2. Set **Root Directory** to `BackEnd`.
+3. Add environment variables from `BackEnd/.env.example`.
+4. Deploy. Your API will be at `https://<project>.vercel.app/api/v1/...`.
+
+### Step 3: Deploy Frontend on Vercel
+
+1. Create a second Vercel project (or use the same repo with a different root).
+2. Set **Root Directory** to `FrontEnd/chatbot`.
+3. Add build env vars from `FrontEnd/chatbot/.env.example`:
+   - `VITE_API_URL` → your Node API URL (e.g. `https://node-api.vercel.app/api/v1`)
+   - `VITE_AI_API_URL` → your AI backend URL (set after Step 4)
+4. Framework preset: **Vite**. Build command: `npm run build`. Output: `dist`.
+
+### Step 4: Deploy AI Backend on Railway
+
+1. Go to [railway.app](https://railway.app) and sign up (no credit card required for the free trial).
+2. Click **New Project** → **Deploy from GitHub repo** → select this repository.
+3. Railway creates a service — open it and go to **Settings**:
+   - Set **Root Directory** to `AI_BackEnd`
+   - Set **Builder** to **Dockerfile** (Railway reads `AI_BackEnd/railway.toml` automatically)
+4. Go to **Variables** and add every variable from `AI_BackEnd/.env.example`:
+
+   | Variable | Value |
+   |---|---|
+   | `GROQ_API_KEY` | Your Groq API key |
+   | `TAVILY_API_KEY` | Your Tavily API key |
+   | `DATABASE_SERVER` | Supabase pooler host |
+   | `DATABASE_PORT` | `5432` |
+   | `DATABASE_NAME` | `postgres` |
+   | `DATABASE_USER_NAME` | `postgres.<project-ref>` |
+   | `DATABASE_PASS` | Supabase database password |
+   | `DATABASE_SSL` | `true` |
+   | `API_URL` | `https://<your-node-api>.vercel.app/api/v1` |
+   | `AI_BACKEND_URL` | Set after step 5 |
+
+5. Go to **Settings → Networking → Generate Domain** to get a public URL like `https://ai-backend-production-xxxx.up.railway.app`.
+6. Copy that URL into the `AI_BACKEND_URL` variable (same value) and redeploy if needed.
+7. In your **Vercel frontend** project, set `VITE_AI_API_URL` to the Railway URL and redeploy.
+
+> **Free tier note:** Railway gives $5 trial credit (30 days), then $1/month. The AI backend may need the Hobby plan ($5/month) for reliable uptime.
+
+### Migrating data from an old database
+
+If you have existing data to import into Supabase:
+
+```bash
+# Export from your old Postgres host
+pg_dump "postgresql://user:pass@old-host/HardWare" > backup.sql
+
+# Import to Supabase (use direct connection, not pooler, for bulk import)
+psql "postgresql://postgres.<ref>:pass@db.<ref>.supabase.co:5432/postgres" < backup.sql
+```
+
+### Local development
+
+Copy the `.env.example` files to `.env` in each service folder. The frontend falls back to `localhost:3000` and `127.0.0.1:9000` when `VITE_*` vars are not set.
 
 ---
