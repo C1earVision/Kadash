@@ -222,9 +222,10 @@ function Agent() {
               Example questions you can ask:
               1. ask about specific products and any information reagarding them,
               2. ask me to add, delete or update product information,
-              3. ask for statistics about the bussiness like total sales and total profit,
+              3. ask for statistics about the bussiness like total sales, total profit, most selling items, etc... .
               4. ask me to create charts for any statistics like a chart to visualize profit
-                 across the last 12 months.`
+                 across the last 12 months.
+              Note: Dummy data (Products, Users, Orders) were added to the database to showcase the agents full capabilites`
   }
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([baseMessage]);
