@@ -36,6 +36,8 @@ def use_agent(messages, agent):
         return str(output)
 
 
+import os
+os.makedirs("tmp", exist_ok=True)
 app.mount("/static", StaticFiles(directory="tmp"), name="static")
 @app.post("/query")
 async def query_travel_agent(query:QueryRequest):
