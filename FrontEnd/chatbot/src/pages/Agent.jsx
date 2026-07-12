@@ -216,8 +216,18 @@ function DashBoard() {
 
 // Agent Component
 function Agent() {
+  const baseMessage = {
+    role: 'AI_Message',
+    content: `Hi! Im a dashboard Agent, I can help you with all requests regarding the database.
+              Example questions you can ask:
+              1. ask about specific products and any information reagarding them,
+              2. ask me to add, delete or update product information,
+              3. ask for statistics about the bussiness like total sales and total profit,
+              4. ask me to create charts for any statistics like a chart to visualize profit
+                 across the last 12 months.`
+  }
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState([baseMessage]);
   const [loading, setLoading] = useState(false);
 
 
@@ -315,18 +325,16 @@ function Agent() {
           {messages.map((msg, i) => (
             <div
               key={i}
-              className={`text-sm leading-relaxed max-w-4xl ${
-                msg.role === "User_Message"
-                  ? "text-right ml-auto"
-                  : "text-left"
-              }`}
+              className={`text-sm leading-relaxed max-w-4xl ${msg.role === "User_Message"
+                ? "text-right ml-auto"
+                : "text-left"
+                }`}
             >
               <div
-                className={`${
-                  msg.role === "User_Message"
-                    ? "text-gray-300"
-                    : "text-white"
-                } whitespace-pre-line`}
+                className={`${msg.role === "User_Message"
+                  ? "text-gray-300"
+                  : "text-white"
+                  } whitespace-pre-line`}
               >
                 {msg.content === "Searching..." ? (
                   <span className="italic text-gray-500">Searching...</span>
@@ -355,8 +363,8 @@ function Agent() {
                   {msg.agent === "use_rag_agent"
                     ? "RAG AGENT USED"
                     : "use_web_search_agent"
-                    ? "SEARCH AGENT USED"
-                    : "CRUD Agent"}
+                      ? "SEARCH AGENT USED"
+                      : "CRUD Agent"}
                 </p>
               )}
             </div>
@@ -397,21 +405,19 @@ export default function App() {
         <nav className="flex flex-col space-y-3 text-gray-300 text-[18px]">
           <button
             onClick={() => setPage("agent")}
-            className={`w-full px-4 py-2 rounded-lg transition-colors ${
-              page === "agent"
-                ? "bg-blue-600 text-white"
-                : "bg-gray-700 hover:bg-gray-600"
-            }`}
+            className={`w-full px-4 py-2 rounded-lg transition-colors ${page === "agent"
+              ? "bg-blue-600 text-white"
+              : "bg-gray-700 hover:bg-gray-600"
+              }`}
           >
             Agent
           </button>
           <button
             onClick={() => setPage("dashboard")}
-            className={`w-full px-4 py-2 rounded-lg transition-colors ${
-              page === "dashboard"
-                ? "bg-blue-600 text-white"
-                : "bg-gray-700 hover:bg-gray-600"
-            }`}
+            className={`w-full px-4 py-2 rounded-lg transition-colors ${page === "dashboard"
+              ? "bg-blue-600 text-white"
+              : "bg-gray-700 hover:bg-gray-600"
+              }`}
           >
             Dashboard
           </button>
