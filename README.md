@@ -12,11 +12,13 @@
 [![LangGraph](https://img.shields.io/badge/LangGraph-Agent_Framework-purple)](https://langchain-ai.github.io/langgraph/)
 
 </div>
-## Live Demo
+
+# Live Demo
+
 https://kadash-chi.vercel.app/
+
 Login Credentials for Live Demo:
-Email: akali@gmaill.com
-Password: akali
+Email: akali@gmaill.com || Password: akali
 
 
 ## Overview
