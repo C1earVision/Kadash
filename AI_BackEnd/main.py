@@ -49,6 +49,11 @@ def use_agent(messages, agent):
 
 os.makedirs("tmp", exist_ok=True)
 app.mount("/static", StaticFiles(directory="tmp"), name="static")
+
+@app.options("/query")
+async def options_query():
+    return JSONResponse(status_code=200, content={"status": "ok"})
+
 @app.post("/query")
 async def query_travel_agent(query:QueryRequest):
     try:
