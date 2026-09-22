@@ -101,6 +101,12 @@ CREATE TABLE IF NOT EXISTS "Review" (
     "Rating" DOUBLE PRECISION NOT NULL,
     "Comment" TEXT
 );
+
+CREATE TABLE IF NOT EXISTS "AgentVisualization" (
+    "VisualizationId" UUID PRIMARY KEY,
+    "CreatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "Img" BYTEA NOT NULL
+);
 `;
 
 async function main() {

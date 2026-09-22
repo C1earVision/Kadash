@@ -3,6 +3,28 @@ import axios from "axios";
 import { Copy, Trash, Search } from "lucide-react"; // icon for copy button
 import { API_URL, AI_API_URL } from "../config/api";
 
+function normalizeVisualizationUrl(imageUrl) {
+  if (!imageUrl || typeof imageUrl !== "string") return null;
+  const trimmed = imageUrl.trim();
+  if (!trimmed) return null;
+
+  const aiBase = AI_API_URL.replace(/\/$/, "");
+  if (trimmed.startsWith("/")) {
+    return `${aiBase}${trimmed}`;
+  }
+
+  try {
+    const apiOrigin = new URL(aiBase).origin;
+    const parsed = new URL(trimmed);
+    if (parsed.pathname.startsWith("/visualizations/")) {
+      return `${apiOrigin}${parsed.pathname}`;
+    }
+  } catch {
+    // keep original URL if parsing fails
+  }
+
+  return trimmed;
+}
 
 function DashBoard() {
   const [products, setProducts] = useState([]);
@@ -272,22 +294,13 @@ function Agent() {
       };
       const res = await axios.post(`${AI_API_URL}/query`, payLoad);
 
-      let aiMessage;
-      if (res.data.answer.includes("http")) {
-        const llm_response_object = JSON.parse(res.data.answer);
-        aiMessage = {
-          role: "AI_Message",
-          content: llm_response_object.content,
-          agent: res.data.agent,
-          image: llm_response_object.image,
-        };
-      } else {
-        aiMessage = {
-          role: "AI_Message",
-          content: res.data.answer,
-          agent: res.data.agent,
-        };
-      }
+      const imageUrl = normalizeVisualizationUrl(res.data.image);
+      const aiMessage = {
+        role: "AI_Message",
+        content: res.data.answer,
+        agent: res.data.agent,
+        ...(imageUrl ? { image: imageUrl } : {}),
+      };
 
       let updatedMessages =
         JSON.parse(localStorage.getItem("messages")) || [];
@@ -343,15 +356,12 @@ function Agent() {
                   <>
                     <div>{msg.content}</div>
                     {msg.image && (
-                      <div>
+                      <div className="mt-3 inline-block max-w-full rounded-lg border border-gray-700 bg-white p-2">
                         <img
                           src={msg.image}
                           alt="Generated visualization"
-                          style={{
-                            maxWidth: "100%",
-                            height: "auto",
-                            marginTop: "4px",
-                          }}
+                          className="block max-w-full h-auto"
+                          loading="lazy"
                         />
                       </div>
                     )}
