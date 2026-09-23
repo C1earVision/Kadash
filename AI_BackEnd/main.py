@@ -99,6 +99,12 @@ def parse_visualization_answer(raw_answer):
 
 
 
+@app.get("/")
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "service": "AI_BackEnd"}
+
+
 @app.get("/visualizations/{visualization_id}")
 async def get_visualization_image(visualization_id: str):
     image_bytes = get_visualization(visualization_id)

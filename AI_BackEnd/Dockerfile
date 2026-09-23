@@ -1,4 +1,4 @@
-# ---- Railway Deployment Dockerfile for AI Backend ----
+# ---- Deployment Dockerfile for AI Backend (Render / Docker) ----
 FROM python:3.11-slim
 
 # Install system dependencies needed for psycopg2-binary and other libs

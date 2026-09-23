@@ -86,7 +86,6 @@ Kadash is a full-stack **Agentic RAG** (Retrieval-Augmented Generation) chatbot 
 | **Frontend** | React 18 · Vite · Tailwind CSS · shadcn/ui · MUI |
 | **Database** | PostgreSQL (products, users, orders) |
 | **Security** | JWT · Helmet · XSS-Clean · Rate Limiting · bcrypt |
-| **DevOps** | Docker (sandboxed Python execution · Railway deployment) |
 
 ---
 

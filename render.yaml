@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: kadash-ai-backend
+    runtime: docker
+    rootDir: AI_BackEnd
+    dockerfilePath: Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: DATABASE_SERVER
+        sync: false
+      - key: DATABASE_PORT
+        value: "5432"
+      - key: DATABASE_NAME
+        value: "postgres"
+      - key: DATABASE_USER_NAME
+        sync: false
+      - key: DATABASE_PASS
+        sync: false
+      - key: DATABASE_SSL
+        value: "true"
+      - key: API_URL
+        sync: false
+      - key: AI_BACKEND_URL
+        sync: false
