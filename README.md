@@ -217,12 +217,14 @@ docker build -t python-sandbox .
 | `GROQ_API_KEY` | Groq API key (used for the router agent) |
 | `TAVILY_API_KEY` | Tavily API key for web search |
 | `API_URL` | Node.js backend base URL (e.g. `http://localhost:3000/api/v1`) |
-| `DATABASE_SERVER` | PostgreSQL host |
-| `DATABASE_PORT` | PostgreSQL port (default: `5432`) |
-| `DATABASE_NAME` | PostgreSQL database name |
-| `DATABASE_USER_NAME` | PostgreSQL username |
+| `DATABASE_SERVER` | PostgreSQL host (Supabase: **Session pooler** host, e.g. `aws-0-xx.pooler.supabase.com`) |
+| `DATABASE_PORT` | PostgreSQL port (`5432` for Supabase Session pooler) |
+| `DATABASE_NAME` | PostgreSQL database name (`postgres` on Supabase) |
+| `DATABASE_USER_NAME` | PostgreSQL username (`postgres.your-project-ref` on Supabase pooler) |
 | `DATABASE_PASS` | PostgreSQL password |
 | `DATABASE_SSL` | Set to `true` for Supabase (auto-detected if host contains `supabase`) |
+
+**Common Vercel mistake:** putting `postgres.xxxx` in `DATABASE_SERVER`. That value belongs in `DATABASE_USER_NAME`; the pooler hostname goes in `DATABASE_SERVER`.
 
 ### Backend (`BackEnd/.env`)
 
@@ -231,10 +233,10 @@ docker build -t python-sandbox .
 | `JWT_SECRET` | Secret key for JWT token signing |
 | `JWT_LIFETIME` | Token expiry (default: `30d`) |
 | `PORT` | Server port (default: `3000`) |
-| `DATABASE_SERVER` | PostgreSQL host |
+| `DATABASE_SERVER` | PostgreSQL host (Supabase: **Session pooler** host) |
 | `DATABASE_PORT` | PostgreSQL port (default: `5432`) |
 | `DATABASE_NAME` | PostgreSQL database name |
-| `DATABASE_USER_NAME` | PostgreSQL username |
+| `DATABASE_USER_NAME` | PostgreSQL username (`postgres.your-project-ref` with Supabase pooler) |
 | `DATABASE_PASS` | PostgreSQL password |
 | `DATABASE_SSL` | Set to `true` for Supabase (auto-detected if host contains `supabase`) |
 
