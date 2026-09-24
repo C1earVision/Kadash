@@ -1,75 +1,102 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { API_URL } from "../config/api";
 
-
-
 const Login = () => {
-  const navigate = useNavigate()
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-
-
-  const handleEmailChange = (event) => {
-    setEmail(event.target.value);
-  };
-
-  const handlePasswordChange = (event) => {
-    setPassword(event.target.value);
-  };
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    setError('');
+    setIsLoading(true);
 
     try {
-      const url = `${API_URL}/auth/login`
+      const url = `${API_URL}/auth/login`;
       const user = await axios.post(url, {
         email: email,
         password: password,
       });
       localStorage.setItem('user', JSON.stringify(user.data));
-      console.log(JSON.parse(localStorage.getItem('user')))
-      navigate('/agent')
-    } catch (error) {
-      alert('Email or password wrong')
-      console.error('Error logging in:', error);
+      navigate('/agent');
+    } catch (err) {
+      setError('Invalid email or password.');
+      console.error('Error logging in:', err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="h-screen flex items-center justify-center bg-[#1F263A]">
-      <div className="p-10 rounded-lg w-96">
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label htmlFor="email" className="block text-sm font-medium text-gray-300">
+    <div className="min-h-screen flex items-center justify-center bg-[#0F1117] px-4">
+      <div className="w-full max-w-[360px]">
+        {/* Brand */}
+        <div className="mb-10">
+          <h1 className="text-[22px] font-semibold text-[#F3F4F6] tracking-tight">
+            Kadash
+          </h1>
+          <p className="mt-1 text-[13px] text-[#9CA3AF]">
+            Sign in to your account
+          </p>
+        </div>
+
+        {/* Error message */}
+        {error && (
+          <div className="mb-4 px-3 py-2.5 text-[13px] text-red-400 bg-red-400/8 border border-red-400/20 rounded-md">
+            {error}
+          </div>
+        )}
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label
+              htmlFor="email"
+              className="block text-[13px] font-medium text-[#9CA3AF] mb-1.5"
+            >
               Email
             </label>
             <input
               type="email"
               id="email"
               value={email}
-              onChange={handleEmailChange}
-              className="bg-gray-700 border border-gray-600 text-gray-300 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-3 py-2 text-[14px] text-[#F3F4F6] bg-[#151820] border border-[#272B35] rounded-md placeholder-[#4B5563] focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] transition-colors"
+              placeholder="name@company.com"
               required
+              autoComplete="email"
             />
           </div>
-          <div className="mb-4">
-            <label htmlFor="password" className="block text-sm font-medium text-gray-300">
+
+          <div>
+            <label
+              htmlFor="password"
+              className="block text-[13px] font-medium text-[#9CA3AF] mb-1.5"
+            >
               Password
             </label>
             <input
               type="password"
               id="password"
               value={password}
-              onChange={handlePasswordChange}
-              className="bg-gray-700 border border-gray-600 text-gray-300 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5"
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-3 py-2 text-[14px] text-[#F3F4F6] bg-[#151820] border border-[#272B35] rounded-md placeholder-[#4B5563] focus:outline-none focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB] transition-colors"
+              placeholder="••••••••"
               required
+              autoComplete="current-password"
             />
           </div>
 
-          <button type="submit" className="w-full text-white bg-[rgb(149,171,82)] hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center">
-            Login
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full mt-2 px-4 py-2 text-[14px] font-medium text-white bg-[#2563EB] rounded-md hover:bg-[#1D4ED8] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isLoading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
       </div>

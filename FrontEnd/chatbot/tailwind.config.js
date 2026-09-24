@@ -64,11 +64,8 @@ export default {
   		'2xl': '1536px'
   	},
   	fontFamily: {
-  		roboto: [
-  			'roboto'
-  		]
+  		sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
   	}
   },
   plugins: [require("tailwindcss-animate")],
 }
-

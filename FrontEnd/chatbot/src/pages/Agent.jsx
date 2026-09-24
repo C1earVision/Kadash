@@ -1,8 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
-import { Copy, Trash, Search } from "lucide-react"; // icon for copy button
+import { Copy, Trash2, Search, Send, MessageSquare, Package, LogOut, Check, Loader2, ArrowDown } from "lucide-react";
 import { API_URL, AI_API_URL } from "../config/api";
+import { useNavigate } from "react-router-dom";
+import MarkdownContent, { ChartImage } from "../components/MarkdownContent";
 
+/* ─── URL normaliser (unchanged logic) ─── */
 function normalizeVisualizationUrl(imageUrl) {
   if (!imageUrl || typeof imageUrl !== "string") return null;
   const trimmed = imageUrl.trim();
@@ -26,6 +29,20 @@ function normalizeVisualizationUrl(imageUrl) {
   return trimmed;
 }
 
+/* ─── Agent label helper ─── */
+function agentLabel(agent) {
+  const map = {
+    use_rag_agent: "RAG Agent",
+    use_web_search_agent: "Search Agent",
+    use_crud_agent: "CRUD Agent",
+    use_data_analysis_and_visualization_agent: "Analysis Agent",
+  };
+  return map[agent] || agent;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Dashboard — product catalog table
+   ════════════════════════════════════════════════════════════════ */
 function DashBoard() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -33,7 +50,7 @@ function DashBoard() {
   const [copiedId, setCopiedId] = useState(null);
 
   // Search states
-  const [searchField, setSearchField] = useState("Name"); // default to Name
+  const [searchField, setSearchField] = useState("Name");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
 
@@ -76,7 +93,7 @@ function DashBoard() {
     if (!window.confirm("Are you sure you want to delete this product?")) return;
     const user = JSON.parse(localStorage.getItem("user"));
     if (!user) {
-      alert("❌ You must be logged in");
+      alert("You must be logged in");
       return;
     }
     try {
@@ -88,7 +105,7 @@ function DashBoard() {
       setProducts((prev) => prev.filter((p) => p.ProductId !== id));
     } catch (err) {
       console.error("Failed to delete product:", err);
-      alert("❌ Failed to delete product");
+      alert("Failed to delete product");
     }
   };
 
@@ -110,53 +127,58 @@ function DashBoard() {
 
   if (loading) {
     return (
-      <div className="flex flex-1 items-center justify-center text-xl">
-        Loading products...
+      <div className="flex flex-1 items-center justify-center">
+        <Loader2 size={20} className="animate-spin text-[#9CA3AF]" />
+        <span className="ml-2 text-[14px] text-[#9CA3AF]">Loading products…</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-1 items-center justify-center text-red-500 text-xl">
+      <div className="flex flex-1 items-center justify-center text-[14px] text-red-400">
         {error}
       </div>
     );
   }
 
   return (
-    <div className="flex-1 p-6 bg-[#0F0F1A] text-white">
-      <h1 className="text-3xl font-bold mb-6">📦 Products</h1>
+    <div className="flex-1 flex flex-col min-h-0 p-6">
+      {/* Header */}
+      <div className="mb-5">
+        <h2 className="text-[18px] font-semibold text-[#F3F4F6]">Products</h2>
+        <p className="text-[13px] text-[#6B7280] mt-0.5">
+          {filteredProducts.length} {filteredProducts.length === 1 ? "item" : "items"}
+          {selectedCategory !== "All" && ` in ${selectedCategory}`}
+        </p>
+      </div>
 
-      {/* Search and Filters */}
-      <div className="mb-4 flex flex-col md:flex-row gap-3 items-center">
-        {/* Search Field Selector */}
+      {/* Filters */}
+      <div className="flex flex-col md:flex-row gap-2 mb-4">
         <select
           value={searchField}
           onChange={(e) => setSearchField(e.target.value)}
-          className="px-3 py-2 rounded-lg bg-gray-800 text-white border border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="px-3 py-1.5 text-[13px] rounded-md bg-[#151820] text-[#D1D5DB] border border-[#272B35] focus:outline-none focus:border-[#2563EB] transition-colors"
         >
           <option value="Name">Name</option>
           <option value="ID">ID</option>
         </select>
 
-        {/* Search Input */}
-        <div className="relative flex-1 w-full md:w-1/2">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+        <div className="relative flex-1">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#6B7280]" size={15} />
           <input
             type="text"
-            placeholder={`Search by ${searchField}...`}
+            placeholder={`Search by ${searchField.toLowerCase()}…`}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 rounded-lg bg-gray-800 text-white border border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-8 pr-3 py-1.5 text-[13px] rounded-md bg-[#151820] text-[#D1D5DB] border border-[#272B35] placeholder-[#4B5563] focus:outline-none focus:border-[#2563EB] transition-colors"
           />
         </div>
 
-        {/* Category Selector */}
         <select
           value={selectedCategory}
           onChange={(e) => setSelectedCategory(e.target.value)}
-          className="px-3 py-2 rounded-lg bg-gray-800 text-white border border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="px-3 py-1.5 text-[13px] rounded-md bg-[#151820] text-[#D1D5DB] border border-[#272B35] focus:outline-none focus:border-[#2563EB] transition-colors"
         >
           {categories.map((cat, i) => (
             <option key={i} value={cat}>
@@ -167,58 +189,65 @@ function DashBoard() {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto max-h-[500px] overflow-y-auto border border-gray-700 rounded-lg">
-        <table className="min-w-full">
-          <thead className="bg-gray-800 sticky top-0">
-            <tr>
-              <th className="px-4 py-2 text-left">ID</th>
-              <th className="px-4 py-2 text-left">Name</th>
-              <th className="px-4 py-2 text-left">Price</th>
-              <th className="px-4 py-2 text-left">Category</th>
-              <th className="px-4 py-2 text-left">Brand</th>
-              <th className="px-4 py-2 text-left">Stock</th>
+      <div className="flex-1 min-h-0 overflow-auto rounded-md border border-[#272B35]">
+        <table className="w-full text-[13px]">
+          <thead className="sticky top-0 z-10">
+            <tr className="bg-[#151820] text-[#9CA3AF] text-left text-[12px] uppercase tracking-wider">
+              <th className="px-4 py-2.5 font-medium">ID</th>
+              <th className="px-4 py-2.5 font-medium">Name</th>
+              <th className="px-4 py-2.5 font-medium">Price</th>
+              <th className="px-4 py-2.5 font-medium">Category</th>
+              <th className="px-4 py-2.5 font-medium">Brand</th>
+              <th className="px-4 py-2.5 font-medium">Stock</th>
+              <th className="px-4 py-2.5 font-medium w-[80px]"></th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-[#1E2230]">
             {filteredProducts.length > 0 ? (
               filteredProducts.map((p) => (
                 <tr
                   key={p.ProductId}
-                  className="border-t border-gray-700 hover:bg-gray-900"
+                  className="text-[#D1D5DB] hover:bg-[#151820]/60 transition-colors"
                 >
-                  <td className="px-4 py-2 flex items-center gap-2">
-                    <span>{p.ProductId}</span>
-
-                    {/* Copy Button */}
-                    <button
-                      onClick={() => handleCopy(p.ProductId)}
-                      className="p-1 rounded hover:bg-gray-700"
-                    >
-                      <Copy size={16} />
-                    </button>
-
-                    {/* Delete Button */}
-                    <button
-                      onClick={() => handleDelete(p.ProductId)}
-                      className="p-1 rounded hover:bg-red-700"
-                    >
-                      <Trash size={16} />
-                    </button>
-
-                    {copiedId === p.ProductId && (
-                      <span className="text-green-400 text-sm ml-1">Copied!</span>
-                    )}
+                  <td className="px-4 py-2.5 font-mono text-[12px] text-[#9CA3AF]">
+                    {p.ProductId}
                   </td>
-                  <td className="px-4 py-2">{p.Name}</td>
-                  <td className="px-4 py-2">${p.Price}</td>
-                  <td className="px-4 py-2">{p.Category}</td>
-                  <td className="px-4 py-2">{p.Brand}</td>
-                  <td className="px-4 py-2">{p.StockQuantity}</td>
+                  <td className="px-4 py-2.5 text-[#F3F4F6]">{p.Name}</td>
+                  <td className="px-4 py-2.5">${p.Price}</td>
+                  <td className="px-4 py-2.5">
+                    <span className="inline-block px-1.5 py-0.5 text-[11px] rounded bg-[#1E2230] text-[#9CA3AF]">
+                      {p.Category}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5">{p.Brand}</td>
+                  <td className="px-4 py-2.5">{p.StockQuantity}</td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleCopy(p.ProductId)}
+                        className="p-1 rounded text-[#6B7280] hover:text-[#D1D5DB] hover:bg-[#272B35] transition-colors"
+                        title="Copy ID"
+                      >
+                        {copiedId === p.ProductId ? (
+                          <Check size={14} className="text-green-400" />
+                        ) : (
+                          <Copy size={14} />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(p.ProductId)}
+                        className="p-1 rounded text-[#6B7280] hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                        title="Delete product"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan="6" className="text-center py-4 text-gray-400">
+                <td colSpan="7" className="text-center py-8 text-[13px] text-[#6B7280]">
                   No products found
                 </td>
               </tr>
@@ -231,32 +260,46 @@ function DashBoard() {
 }
 
 
-
-
-
-
-
-// Agent Component
-function Agent() {
+/* ════════════════════════════════════════════════════════════════
+   ChatView — agent chat interface
+   ════════════════════════════════════════════════════════════════ */
+function ChatView() {
   const baseMessage = {
     role: 'AI_Message',
-    content: `Hi! Im a dashboard Agent, I can help you with all requests regarding the database.
-              Example questions you can ask:
-              1. ask about specific products and any information reagarding them,
-              2. ask me to add, delete or update product information,
-              3. ask for statistics about the bussiness like total sales, total profit, most selling items, etc... .
-              4. ask me to create charts for any statistics like a chart to visualize profit
-                 across the last 12 months.
-              Note: Dummy data (Products, Users, Orders) were added to the database to showcase the agents full capabilites`
-  }
+    content: `Hi! I'm your dashboard agent. I can help you manage your business data.\n\nHere are some things you can ask:\n- Look up product info, pricing, or availability\n- Add, update, or remove products\n- Get business statistics — sales, profit, top sellers\n- Generate charts and visual reports`
+  };
+
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([baseMessage]);
   const [loading, setLoading] = useState(false);
-
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+  const chatContainerRef = useRef(null);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("messages", JSON.stringify(["Context: "]));
     localStorage.setItem("admin", JSON.stringify(false));
+  }, []);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  // Track scroll position to show/hide scroll-to-bottom button
+  useEffect(() => {
+    const container = chatContainerRef.current;
+    if (!container) return;
+    const handleScroll = () => {
+      const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+      setShowScrollBtn(distanceFromBottom > 100);
+    };
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
   }, []);
 
   const sendMessage = async () => {
@@ -270,16 +313,17 @@ function Agent() {
     setMessages((prev) => [
       ...prev,
       newMessage,
-      { role: "AI_Message", content: "Searching..." },
+      { role: "AI_Message", content: "Searching...", isLoading: true },
     ]);
     setInput("");
     setLoading(true);
+    inputRef.current?.focus();
 
     try {
       const user = JSON.parse(localStorage.getItem("user"));
       if (!user) {
         setMessages((prev) => {
-          const filtered = prev.filter((msg) => msg.content !== "Searching...");
+          const filtered = prev.filter((msg) => !msg.isLoading);
           return [...filtered, { role: "AI_Message", content: "Please log in first to use the agent." }];
         });
         setLoading(false);
@@ -308,17 +352,17 @@ function Agent() {
       localStorage.setItem("messages", JSON.stringify(updatedMessages));
 
       setMessages((prev) => {
-        const filtered = prev.filter((msg) => msg.content !== "Searching...");
+        const filtered = prev.filter((msg) => !msg.isLoading);
         return [...filtered, aiMessage];
       });
     } catch (err) {
       setMessages((prev) => {
-        const filtered = prev.filter((msg) => msg.content !== "Searching...");
+        const filtered = prev.filter((msg) => !msg.isLoading);
         return [
           ...filtered,
           {
             role: "AI_Message",
-            content: `Error connecting to AI. ${err.response?.data?.error}`,
+            content: `Error connecting to AI. ${err.response?.data?.error || "Please try again."}`,
           },
         ];
       });
@@ -328,122 +372,188 @@ function Agent() {
   };
 
   const handleKeyPress = (e) => {
-    if (e.key === "Enter") sendMessage();
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
   };
 
   return (
-    <div className="flex min-h-screen bg-[#0F0F1A] text-white">
-      {/* Main Chat Area */}
-      <main className="flex-1 flex flex-col justify-between px-8 py-6">
-        <div className="flex-1 overflow-y-auto space-y-6 pr-4">
+    <div className="flex-1 flex flex-col min-h-0">
+      {/* Messages area */}
+      <div
+        ref={chatContainerRef}
+        className="flex-1 overflow-y-auto px-6 py-6 relative"
+      >
+        <div className="max-w-3xl mx-auto space-y-5">
           {messages.map((msg, i) => (
-            <div
-              key={i}
-              className={`text-sm leading-relaxed max-w-4xl ${msg.role === "User_Message"
-                ? "text-right ml-auto"
-                : "text-left"
-                }`}
-            >
-              <div
-                className={`${msg.role === "User_Message"
-                  ? "text-gray-300"
-                  : "text-white"
-                  } whitespace-pre-line`}
-              >
-                {msg.content === "Searching..." ? (
-                  <span className="italic text-gray-500">Searching...</span>
-                ) : (
-                  <>
-                    <div>{msg.content}</div>
-                    {msg.image && (
-                      <div className="mt-3 inline-block max-w-full rounded-lg border border-gray-700 bg-white p-2">
-                        <img
-                          src={msg.image}
-                          alt="Generated visualization"
-                          className="block max-w-full h-auto"
-                          loading="lazy"
-                        />
+            <div key={i}>
+              {msg.role === "User_Message" ? (
+                /* User message */
+                <div className="flex justify-end">
+                  <div className="max-w-[75%] px-3.5 py-2.5 rounded-lg bg-[#1E2230] text-[14px] text-[#F3F4F6] leading-relaxed">
+                    {msg.content}
+                  </div>
+                </div>
+              ) : (
+                /* AI message */
+                <div className="flex justify-start">
+                  <div className="w-full max-w-[95%]">
+                    {msg.isLoading ? (
+                      <div className="flex items-center gap-2 text-[14px] text-[#6B7280]">
+                        <Loader2 size={15} className="animate-spin" />
+                        <span>Thinking…</span>
                       </div>
+                    ) : (
+                      <>
+                        <MarkdownContent content={msg.content} />
+                        {msg.image && (
+                          <ChartImage
+                            src={msg.image}
+                            alt="Generated visualization"
+                          />
+                        )}
+                        {msg.agent && (
+                          <p className="mt-1.5 text-[11px] text-[#6B7280]">
+                            via {agentLabel(msg.agent)}
+                          </p>
+                        )}
+                      </>
                     )}
-                  </>
-                )}
-              </div>
-              {msg.agent && (
-                <p className="text-xs italic text-gray-500 mt-1">
-                  –{" "}
-                  {msg.agent === "use_rag_agent"
-                    ? "RAG AGENT USED"
-                    : "use_web_search_agent"
-                      ? "SEARCH AGENT USED"
-                      : "CRUD Agent"}
-                </p>
+                  </div>
+                </div>
               )}
             </div>
           ))}
+          <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Box */}
-        <div className="flex items-center gap-2 mt-6">
+        {/* Scroll-to-bottom button */}
+        {showScrollBtn && (
+          <button
+            onClick={scrollToBottom}
+            className="sticky bottom-4 left-1/2 -translate-x-1/2 p-2 rounded-full bg-[#272B35] text-[#9CA3AF] hover:text-[#F3F4F6] hover:bg-[#353a47] transition-colors shadow-lg"
+          >
+            <ArrowDown size={16} />
+          </button>
+        )}
+      </div>
+
+      {/* Input area */}
+      <div className="border-t border-[#1E2230] px-6 py-4">
+        <div className="max-w-3xl mx-auto flex items-center gap-2">
           <input
+            ref={inputRef}
             type="text"
-            placeholder="what would be the low hanging fruit opp..."
+            placeholder="Ask anything about your business…"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyPress}
-            className="flex-1 bg-[#1C1C2D] text-white placeholder-gray-400 border border-gray-700 rounded px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-600"
+            disabled={loading}
+            className="flex-1 px-3.5 py-2 text-[14px] text-[#F3F4F6] bg-[#151820] border border-[#272B35] rounded-md placeholder-[#4B5563] focus:outline-none focus:border-[#2563EB] disabled:opacity-50 transition-colors"
           />
           <button
             onClick={sendMessage}
-            disabled={loading}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 px-5 py-2 rounded"
+            disabled={loading || !input.trim()}
+            className="flex items-center justify-center w-9 h-9 rounded-md bg-[#2563EB] text-white hover:bg-[#1D4ED8] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            title="Send message"
           >
-            {loading ? "Sending..." : "Send"}
+            {loading ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Send size={16} />
+            )}
           </button>
         </div>
-      </main>
+      </div>
     </div>
   );
 }
 
+
+/* ════════════════════════════════════════════════════════════════
+   Main Layout — sidebar + content area
+   ════════════════════════════════════════════════════════════════ */
 export default function App() {
   const [page, setPage] = useState("agent");
+  const navigate = useNavigate();
+
+  const user = (() => {
+    try {
+      const data = JSON.parse(localStorage.getItem("user"));
+      return data?.user || null;
+    } catch {
+      return null;
+    }
+  })();
+
+  const handleLogout = () => {
+    localStorage.removeItem("user");
+    localStorage.removeItem("messages");
+    localStorage.removeItem("admin");
+    navigate("/");
+  };
 
   return (
-    <div className="flex h-screen bg-[#0F0F1A] text-white overflow-y-auto">
-      {/* Sidebar */}
-      <aside className="w-64 bg-[#151522] p-6 flex flex-col">
-        <h1 className="text-3xl font-bold mb-8">Kadash</h1>
-        <nav className="flex flex-col space-y-3 text-gray-300 text-[18px]">
-          <button
-            onClick={() => setPage("agent")}
-            className={`w-full px-4 py-2 rounded-lg transition-colors ${page === "agent"
-              ? "bg-blue-600 text-white"
-              : "bg-gray-700 hover:bg-gray-600"
+    <div className="flex h-screen bg-[#0F1117] text-[#F3F4F6] overflow-hidden">
+      {/* ─── Sidebar ─── */}
+      <aside className="w-56 flex flex-col border-r border-[#1E2230] bg-[#0F1117]">
+        {/* Logo */}
+        <div className="px-5 py-5">
+          <span className="text-[17px] font-semibold tracking-tight text-[#F3F4F6]">
+            Kadash
+          </span>
+        </div>
+
+        {/* Nav */}
+        <nav className="flex-1 px-3">
+          <div className="space-y-0.5">
+            <button
+              onClick={() => setPage("agent")}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors ${
+                page === "agent"
+                  ? "bg-[#2563EB]/10 text-[#3B82F6]"
+                  : "text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820]"
               }`}
-          >
-            Agent
-          </button>
-          <button
-            onClick={() => setPage("dashboard")}
-            className={`w-full px-4 py-2 rounded-lg transition-colors ${page === "dashboard"
-              ? "bg-blue-600 text-white"
-              : "bg-gray-700 hover:bg-gray-600"
+            >
+              <MessageSquare size={16} />
+              Agent
+            </button>
+            <button
+              onClick={() => setPage("dashboard")}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors ${
+                page === "dashboard"
+                  ? "bg-[#2563EB]/10 text-[#3B82F6]"
+                  : "text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820]"
               }`}
-          >
-            Dashboard
-          </button>
+            >
+              <Package size={16} />
+              Products
+            </button>
+          </div>
         </nav>
+
+        {/* Footer */}
+        <div className="px-3 pb-4 mt-auto">
+          {user && (
+            <div className="px-3 py-2 mb-2">
+              <p className="text-[12px] text-[#6B7280] truncate">{user.Email}</p>
+            </div>
+          )}
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820] transition-colors"
+          >
+            <LogOut size={16} />
+            Sign out
+          </button>
+        </div>
       </aside>
 
-      {/* Main content area */}
-      <main className="flex-1 flex flex-col bg-[#0F0F1A]">
-        {page === "agent" ? <Agent /> : <DashBoard />}
+      {/* ─── Content ─── */}
+      <main className="flex-1 flex flex-col min-h-0 bg-[#0F1117]">
+        {page === "agent" ? <ChatView /> : <DashBoard />}
       </main>
     </div>
   );
 }
-
-
-
-
-
