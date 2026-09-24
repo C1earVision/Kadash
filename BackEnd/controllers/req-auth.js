@@ -150,115 +150,13 @@ const deleteProduct = async (req, res) => {
   res.status(StatusCodes.OK).send('product deleted succesfully')
 }
 
-const addProductToCart = async (req, res) => {
-  const { user: { customerId }, params: { id: productId }, body: { quantity } } = req
-  const db = await dbConnect;
-  
-  const cartResult = await db.query(
-    `SELECT "CartId" FROM "Cart" WHERE "CustomerId" = $1`,
-    [customerId]
-  );
-  
-  if (cartResult.rows.length === 0) {
-    throw new CustomAPIError('Cart not found', StatusCodes.NOT_FOUND)
-  }
-  
-  const cartId = cartResult.rows[0].CartId;
-  await db.query(
-    `INSERT INTO "CartItem" ("Quantity", "CartId", "ProductId") VALUES ($1, $2, $3)`,
-    [quantity, cartId, productId]
-  );
-  res.status(StatusCodes.OK).send('Product Added to Cart')
-}
-
-const getCartItems = async (req, res) => {
-  const { customerId } = req.user;
-  const db = await dbConnect;
-
-  const cartIdResult = await db.query(
-    `SELECT "CartId" FROM "Cart" WHERE "CustomerId" = $1`,
-    [customerId]
-  );
-
-  if (cartIdResult.rows.length === 0) {
-    return res.status(StatusCodes.OK).json({ Products: [] });
-  }
-
-  const cartId = cartIdResult.rows[0].CartId;
-
-  const Products = await db.query(`
-    SELECT 
-      p."ProductId",
-      p."Name", 
-      p."Price",
-      p."Brand",
-      ci."Quantity"
-    FROM "CartItem" ci
-    INNER JOIN "Product" p ON ci."ProductId" = p."ProductId"
-    WHERE ci."CartId" = $1
-  `, [cartId]);
-
-  res.status(StatusCodes.OK).json({ Products: Products.rows });
-}
-
-const deleteCartItem = async (req, res) => {
-  const { params: { id: productId }, user: { customerId } } = req
-  const db = await dbConnect;
-  
-  const cartIdResult = await db.query(
-    `SELECT "CartId" FROM "Cart" WHERE "CustomerId" = $1`,
-    [customerId]
-  );
-
-  if (cartIdResult.rows.length === 0) {
-    throw new CustomAPIError('Cart not found', StatusCodes.NOT_FOUND)
-  }
-
-  const cartId = cartIdResult.rows[0].CartId;
-
-  await db.query(
-    `DELETE FROM "CartItem" WHERE "CartId" = $1 AND "ProductId" = $2`,
-    [cartId, productId]
-  );
-
-  res.status(StatusCodes.OK).send('Product Deleted Successfully')
-}
-
-const placeOrder = async (req, res) => {
-  const { user: { customerId }, body: {cartItems, total} } = req
-  const db = await dbConnect;
-  
-  const orderResult = await db.query(`
-    INSERT INTO "TheOrder" ("CustomerId", "TotalAmount", "AmountPaid")
-    VALUES ($1, $2, $3)
-    RETURNING "OrderId"
-  `, [customerId, total, total]);
-
-  const orderId = orderResult.rows[0].OrderId;
-
-  const orderItemResult = await db.query(`
-    INSERT INTO "OrderItem" ("Price", "OrderId")
-    VALUES ($1, $2)
-    RETURNING "OrderItemId"
-  `, [total, orderId]);
-  
-  const orderItemId = orderItemResult.rows[0].OrderItemId;
-
-  for (const item of cartItems) {
-    await db.query(`
-      INSERT INTO "OrderItemProducts" ("OrderItemId", "ProductId", "Quantity")
-      VALUES ($1, $2, $3)
-    `, [orderItemId, item.ProductId, item.Quantity]);
-  }
-
-  res.status(StatusCodes.CREATED).send('Order Placed Successfully')
-}
-
 const getOrders = async (req, res) => {
-  const { user: { customerId, admin } } = req
+  const { user: { admin } } = req
+  if (!admin) {
+    throw new CustomAPIError('this user has no access to this route', StatusCodes.UNAUTHORIZED)
+  }
   const db = await dbConnect;
   
-  const queryParams = [];
   let queryText = `
     SELECT
       p."Name" AS "ProductName",
@@ -274,13 +172,8 @@ const getOrders = async (req, res) => {
     INNER JOIN "OrderItemProducts" oip ON oi."OrderItemId" = oip."OrderItemId"
     INNER JOIN "Product" p ON oip."ProductId" = p."ProductId"
   `;
-  
-  if (admin !== 1) {
-    queryText += ` WHERE o."CustomerId" = $1`;
-    queryParams.push(customerId);
-  }
 
-  const ordersResult = await db.query(queryText, queryParams);
+  const ordersResult = await db.query(queryText);
   const recordset = ordersResult.rows;
   
   const groupedOrders = recordset.reduce((acc, order) => {
@@ -314,27 +207,18 @@ const getOrders = async (req, res) => {
     return acc;
   }, []);  
 
-  if (admin) {
-    const getAddresses = async () => {
-      const addresses = [];
-      
-      await Promise.all(groupedOrders.map(async (order) => {
-        const address = await db.query(
-          `SELECT "Country", "City", "State", "Street" FROM "Customer" WHERE "CustomerId" = $1`,
-          [order.CustomerId]
-        );
-        addresses.push(address.rows[0]);
-      }));
+  const addresses = [];
   
-      console.log(addresses);
-      res.status(StatusCodes.OK).send({ groupedOrders, addresses });
-    };
-  
-    await getAddresses();
-    return;
-  }
-  
-  res.status(StatusCodes.OK).send(groupedOrders);
+  await Promise.all(groupedOrders.map(async (order) => {
+    const address = await db.query(
+      `SELECT "Country", "City", "State", "Street" FROM "Customer" WHERE "CustomerId" = $1`,
+      [order.CustomerId]
+    );
+    addresses.push(address.rows[0]);
+  }));
+
+  console.log(addresses);
+  res.status(StatusCodes.OK).send({ groupedOrders, addresses });
 }
 
 const updateOrderStatus = async (req, res)=>{
@@ -347,28 +231,11 @@ const updateOrderStatus = async (req, res)=>{
   res.status(StatusCodes.OK).send('Status Has Been Updated Successfully')
 }
 
-const addReview = async (req, res) => {
-  const {id:productId} = req.params
-  const {rating, comment} = req.body
-  const db = await dbConnect;
-
-  await db.query(
-    `INSERT INTO "Review" ("ProductId", "Rating", "Comment") VALUES ($1, $2, $3)`,
-    [productId, rating, comment]
-  );
-  res.status(StatusCodes.OK).send('Review Added Successfully')
-}
-
 module.exports = {
   addProduct,
   deleteProduct,
   modifyProduct,
   modifyAdminAccess,
-  addProductToCart,
-  getCartItems,
-  deleteCartItem,
-  addReview,
-  placeOrder,
   getOrders,
   updateOrderStatus
 }

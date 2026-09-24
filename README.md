@@ -1,8 +1,8 @@
-﻿<div align="center">
+<div align="center">
 
 # Kadash
 
-**An intelligent multi-agent chatbot for PC hardware companies, powered by LangGraph & RAG**
+**An intelligent multi-agent assistant & management platform for PC hardware business owners, powered by LangGraph & RAG**
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
@@ -23,17 +23,17 @@ Email: akali@gmaill.com || Password: akali
 
 ## Overview
 
-Kadash is a full-stack **Agentic RAG** (Retrieval-Augmented Generation) chatbot designed for PC hardware companies. It uses a **multi-agent architecture** where a General Router Agent analyzes user queries and delegates them to the most appropriate specialized agent — whether that's searching the web, querying a product database, performing CRUD operations, or generating data visualizations.
+Kadash is a full-stack **Agentic RAG** (Retrieval-Augmented Generation) assistant and management platform designed specifically for PC hardware business owners and store administrators. It uses a **multi-agent architecture** where a General Router Agent analyzes queries and delegates them to the most appropriate specialized agent — whether that's searching the web for real-time hardware benchmarks, querying catalog & inventory data via SQL, performing product CRUD operations, or generating visual sales and performance analytics.
 
 ### Key Features
 
-- 🤖 **Multi-Agent Routing** — Intelligent query classification routes each message to the best-fit agent
-- 🔍 **Web Search** — Real-time internet search via Tavily for up-to-date hardware info
-- 🗃️ **RAG over SQL** — Natural language queries translated to SQL against the company's PostgreSQL product database
-- ✏️ **CRUD Operations** — Admin-only agent for adding/modifying products in the database
-- 📊 **Data Analysis & Visualization** — Generates charts and analytics via sandboxed Python execution in Docker
-- 🔐 **Authentication** — JWT-based auth with role-based access control (Admin / User)
-- 🌐 **Modern Frontend** — React SPA with chat UI, admin dashboard, and map integration
+- 🤖 **Multi-Agent Routing** — Intelligent query classification routes each message to the best-fit specialized agent
+- 🔍 **Web Search** — Real-time internet search via Tavily for up-to-date hardware info and market benchmarks
+- 🗃️ **RAG over SQL** — Natural language queries translated to SQL against the store's PostgreSQL product database
+- ✏️ **Catalog CRUD Operations** — Dedicated agent tools for adding and updating products in the database
+- 📊 **Data Analysis & Visualization** — Generates sales charts and business analytics via sandboxed Python execution in Docker
+- 🔐 **Secure Business Authentication** — JWT-based authentication restricted to business owners / administrators
+- 🌐 **Modern Business Dashboard** — React SPA integrating conversational agent intelligence with product and order management
 
 ---
 
@@ -42,7 +42,7 @@ Kadash is a full-stack **Agentic RAG** (Retrieval-Augmented Generation) chatbot 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     Frontend (React + Vite)                  │
-│          :9001  —  Agent Chat │ Dashboard │ Auth Pages       │
+│          :9001  —  Agent Chat │ Dashboard │ Login Page      │
 └────────────────────────┬────────────────────────────────────┘
                          │  HTTP
           ┌──────────────┴──────────────┐
@@ -52,9 +52,9 @@ Kadash is a full-stack **Agentic RAG** (Retrieval-Augmented Generation) chatbot 
 │   BackEnd (Node)  │        │      AI BackEnd (FastAPI)      │
 │       :3000       │        │           :9000                │
 │                   │        │                                │
-│  • JWT Auth       │        │  ┌─────────────────────────┐   │
+│  • Admin Auth     │        │  ┌─────────────────────────┐   │
 │  • PostgreSQL     │        │  │   General Router Agent  │   │
-│  • Users & Data   │        │  │   (LangGraph + Groq)    │   │
+│  • Products/Orders│        │  │   (LangGraph + Groq)    │   │
 │  • Security       │        │  └────┬──┬──┬──┬──────────┘   │
 │    (Helmet, XSS,  │        │       │  │  │  │              │
 │     Rate Limit)   │        │  ┌────▼──▼──▼──▼──────────┐   │
@@ -84,7 +84,7 @@ Kadash is a full-stack **Agentic RAG** (Retrieval-Augmented Generation) chatbot 
 | **AI Backend** | Python 3.11+ · FastAPI · Uvicorn · Pydantic · psycopg2 |
 | **Backend** | Node.js · Express · pg (node-postgres) |
 | **Frontend** | React 18 · Vite · Tailwind CSS · shadcn/ui · MUI |
-| **Database** | PostgreSQL (products, users, orders) |
+| **Database** | PostgreSQL (products, admin accounts, orders) |
 | **Security** | JWT · Helmet · XSS-Clean · Rate Limiting · bcrypt |
 
 ---
@@ -95,10 +95,10 @@ The system uses a **LangGraph** state-machine workflow. Every incoming query fir
 
 | Agent | Trigger | Capabilities | Access |
 |---|---|---|---|
-| **🔍 Search Agent** | Real-time / general knowledge queries | Web search via Tavily API | All users |
-| **🗃️ RAG Agent** | Product info, pricing, availability | SQL toolkit + web search fallback | All users |
-| **✏️ CRUD Agent** | "Add a product…", insert operations | Database write operations via backend API | Admin only |
-| **📊 Analysis Agent** | "Show me sales trends…", data viz requests | SQL queries + Python code execution (matplotlib, pandas) in Docker | Admin only |
+| **🔍 Search Agent** | Real-time / market intelligence queries | Web search via Tavily API | Business Owners / Admins |
+| **🗃️ RAG Agent** | Product info, pricing, availability | SQL toolkit + web search fallback | Business Owners / Admins |
+| **✏️ CRUD Agent** | "Add a product…", catalog updates | Database write operations via backend API | Business Owners / Admins |
+| **📊 Analysis Agent** | "Show me sales trends…", data viz requests | SQL queries + Python code execution (matplotlib, pandas) in Docker | Business Owners / Admins |
 
 ---
 
@@ -119,16 +119,16 @@ The system uses a **LangGraph** state-machine workflow. Every incoming query fir
 │
 ├── 📁 BackEnd/                 # Node.js — Express REST API
 │   ├── app.js                  # Express server setup
-│   ├── controllers/            # Auth, public, and protected route handlers
+│   ├── controllers/            # Auth, product catalog, and admin order handlers
 │   ├── routes/                 # Route definitions (auth, no-auth, req-auth)
 │   ├── middleware/             # JWT auth middleware, error handler
 │   └── db/                     # PostgreSQL connection & schema init (pg)
 │
 ├── 📁 FrontEnd/chatbot/        # React — Vite SPA
 │   ├── src/
-│   │   ├── pages/              # Agent chat, Dashboard, Login, Register
+│   │   ├── pages/              # Agent chat, Management dashboard, Login
 │   │   ├── App.jsx             # React Router setup
-│   │   └── context.jsx         # Global auth context
+│   │   └── context.jsx         # Global context
 │   └── index.html
 │
 └── README.md
@@ -143,7 +143,7 @@ The system uses a **LangGraph** state-machine workflow. Every incoming query fir
 - **Python** 3.11+
 - **Node.js** 16+
 - **Docker** (for the Analysis Agent's sandboxed execution)
-- **PostgreSQL 14+** (all data — products, users, orders)
+- **PostgreSQL 14+** (products, admin accounts, orders)
 - API keys for **OpenAI** / **Groq** and **Tavily**
 
 ### 1. Clone the Repository
@@ -247,10 +247,8 @@ docker build -t python-sandbox .
 
 | Route | Description | Access |
 |---|---|---|
-| `/agent` | Main chat interface — ask hardware questions | All authenticated users |
-| `/dashboard` | Admin dashboard with analytics and management | Admin only |
-| `/login` | User login | Public |
-| `/register` | User registration | Public |
+| `/agent` | Business owner agent chat interface & management dashboard | Authenticated Business Owners |
+| `/` | Business owner login | Public |
 
 ### Example Queries
 
@@ -258,8 +256,8 @@ docker build -t python-sandbox .
 |---|---|
 | *"What's the latest RTX 5090 benchmark?"* | 🔍 Search Agent |
 | *"Show me all GPUs under $500"* | 🗃️ RAG Agent |
-| *"Add a new product: RTX 4060 Ti at $399"* | ✏️ CRUD Agent (Admin) |
-| *"Show me a chart of monthly sales trends"* | 📊 Analysis Agent (Admin) |
+| *"Add a new product: RTX 4060 Ti at $399"* | ✏️ CRUD Agent |
+| *"Show me a chart of monthly sales trends"* | 📊 Analysis Agent |
 
 ---
 
@@ -269,21 +267,22 @@ docker build -t python-sandbox .
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/query` | Send a user question; returns the answer and which agent was used |
+| `POST` | `/query` | Send a query; returns the answer and which agent was used |
 
 **Request body:**
 ```json
 {
-  "question": "What GPUs do you have in stock?",
-  "admin": false
+  "question": "Show monthly sales for GPUs",
+  "admin": true
 }
 ```
 
 **Response:**
 ```json
 {
-  "answer": "We currently have the following GPUs...",
-  "agent": "use_rag_agent"
+  "answer": "Here is the sales analysis...",
+  "agent": "use_data_analysis_and_visualization_agent",
+  "image": "http://127.0.0.1:9000/visualizations/xxx"
 }
 ```
 
@@ -291,10 +290,9 @@ docker build -t python-sandbox .
 
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| `POST` | `/api/v1/auth/register` | — | Register a new user |
-| `POST` | `/api/v1/auth/login` | — | Login and receive JWT |
-| `GET` | `/api/v1/*` | — | Public routes |
-| `*` | `/api/v1/user/*` | JWT | Protected routes (CRUD, dashboard data) |
+| `POST` | `/api/v1/auth/login` | — | Login for business owners and receive JWT |
+| `GET` | `/api/v1/products` | — | Public product catalog query |
+| `*` | `/api/v1/user/*` | JWT | Protected business owner routes (product CRUD, orders) |
 
 ---
 

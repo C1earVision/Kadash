@@ -3,11 +3,6 @@ const {
   deleteProduct,
   modifyProduct,
   modifyAdminAccess,
-  addProductToCart,
-  getCartItems,
-  deleteCartItem,
-  addReview,
-  placeOrder,
   getOrders,
   updateOrderStatus
 } = require('../controllers/req-auth')
@@ -24,8 +19,5 @@ const router = express.Router()
 router.route('/admin').post(addProduct);
 router.route('/admin/modifyAccess/:id').patch(modifyAdminAccess)
 router.route('/admin/:id').delete(deleteProduct).patch(upload.fields([{ name: 'image0' }, { name: 'image1' }]), modifyProduct)
-router.route('/cart/:id').post(addProductToCart).patch(deleteCartItem)
-router.route('/cart').get(getCartItems)
-router.route('/review/:id').post(addReview)
-router.route('/order').get(getOrders).post(placeOrder).patch(updateOrderStatus)
+router.route('/order').get(getOrders).patch(updateOrderStatus)
 module.exports = router
