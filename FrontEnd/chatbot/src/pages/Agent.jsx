@@ -266,7 +266,7 @@ function DashBoard() {
 function ChatView() {
   const baseMessage = {
     role: 'AI_Message',
-    content: `Hi! I'm your dashboard agent. I can help you manage your business data.\n\nHere are some things you can ask:\n- Look up product info, pricing, or availability\n- Add, update, or remove products\n- Get business statistics — sales, profit, top sellers\n- Generate charts and visual reports`
+    content: `Hi! I'm your dashboard agent. I can help you manage your business data.\n\nHere are some things you can ask:\n- Look up product info, pricing, or availability\n- Add, update, or remove products\n- Get business statistics: sales, profit, top sellers\n- Generate charts and visual reports`
   };
 
   const [input, setInput] = useState("");
@@ -510,22 +510,20 @@ export default function App() {
           <div className="space-y-0.5">
             <button
               onClick={() => setPage("agent")}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors ${
-                page === "agent"
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors ${page === "agent"
                   ? "bg-[#2563EB]/10 text-[#3B82F6]"
                   : "text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820]"
-              }`}
+                }`}
             >
               <MessageSquare size={16} />
               Agent
             </button>
             <button
               onClick={() => setPage("dashboard")}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors ${
-                page === "dashboard"
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors ${page === "dashboard"
                   ? "bg-[#2563EB]/10 text-[#3B82F6]"
                   : "text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820]"
-              }`}
+                }`}
             >
               <Package size={16} />
               Products
