@@ -1,6 +1,24 @@
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
-import { Copy, Trash2, Search, Send, MessageSquare, Package, LogOut, Check, Loader2, ArrowDown } from "lucide-react";
+import {
+  Copy,
+  Trash2,
+  Search,
+  Send,
+  MessageSquare,
+  Package,
+  LogOut,
+  Check,
+  Loader2,
+  ArrowDown,
+  Sparkles,
+  TrendingUp,
+  BarChart3,
+  PackageSearch,
+  Cpu,
+  ArrowRight,
+  RotateCcw
+} from "lucide-react";
 import { API_URL, AI_API_URL } from "../config/api";
 import { useNavigate } from "react-router-dom";
 import MarkdownContent, { ChartImage } from "../components/MarkdownContent";
@@ -260,17 +278,44 @@ function DashBoard() {
 }
 
 
+/* ─── Prompt suggestion definitions ─── */
+const PROMPT_SUGGESTIONS = [
+  {
+    icon: PackageSearch,
+    badge: "bg-blue-500/10 text-blue-400 border border-blue-500/20",
+    title: "Stock & Inventory",
+    prompt: "What products do we currently have in stock?",
+    description: "Check available hardware units and stock levels",
+  },
+  {
+    icon: TrendingUp,
+    badge: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
+    title: "Top Performers",
+    prompt: "Show me our top 5 best-selling products",
+    description: "Analyze most popular hardware by order volume",
+  },
+  {
+    icon: BarChart3,
+    badge: "bg-purple-500/10 text-purple-400 border border-purple-500/20",
+    title: "Sales & Charts",
+    prompt: "Generate a chart of monthly sales revenue",
+    description: "Create a visual revenue breakdown over time",
+  },
+  {
+    icon: Cpu,
+    badge: "bg-amber-500/10 text-amber-400 border border-amber-500/20",
+    title: "Hardware Pricing",
+    prompt: "Show all GPUs and their prices in a table",
+    description: "Compare graphics cards, pricing, and specs",
+  },
+];
+
 /* ════════════════════════════════════════════════════════════════
    ChatView — agent chat interface
    ════════════════════════════════════════════════════════════════ */
 function ChatView() {
-  const baseMessage = {
-    role: 'AI_Message',
-    content: `Hi! I'm your dashboard agent. I can help you manage your business data.\n\nHere are some things you can ask:\n- Look up product info, pricing, or availability\n- Add, update, or remove products\n- Get business statistics: sales, profit, top sellers\n- Generate charts and visual reports`
-  };
-
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState([baseMessage]);
+  const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -302,9 +347,16 @@ function ChatView() {
     return () => container.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
-    const newMessage = { role: "User_Message", content: input };
+  const handleResetChat = () => {
+    setMessages([]);
+    localStorage.setItem("messages", JSON.stringify(["Context: "]));
+  };
+
+  const sendMessage = async (customPrompt) => {
+    const textToSend = typeof customPrompt === "string" ? customPrompt : input;
+    if (!textToSend.trim() || loading) return;
+
+    const newMessage = { role: "User_Message", content: textToSend };
     let storedMessages =
       JSON.parse(localStorage.getItem("messages")) || ["Context: "];
     storedMessages.push(`${newMessage.role}: ${newMessage.content};`);
@@ -380,53 +432,118 @@ function ChatView() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
+      {/* Top action bar when in conversation */}
+      {messages.length > 0 && (
+        <div className="flex items-center justify-between px-6 py-2.5 border-b border-[#1E2230] bg-[#0F1117]/60 backdrop-blur-sm">
+          <span className="text-[12.5px] font-medium text-[#9CA3AF]">
+            Conversation
+          </span>
+          <button
+            onClick={handleResetChat}
+            className="flex items-center gap-1.5 px-2.5 py-1 text-[12px] text-[#9CA3AF] hover:text-[#F3F4F6] hover:bg-[#1E2230] rounded-md transition-colors"
+            title="Start new conversation"
+          >
+            <RotateCcw size={13} />
+            <span>New chat</span>
+          </button>
+        </div>
+      )}
+
       {/* Messages area */}
       <div
         ref={chatContainerRef}
         className="flex-1 overflow-y-auto px-6 py-6 relative"
       >
-        <div className="max-w-3xl mx-auto space-y-5">
-          {messages.map((msg, i) => (
-            <div key={i}>
-              {msg.role === "User_Message" ? (
-                /* User message */
-                <div className="flex justify-end">
-                  <div className="max-w-[75%] px-3.5 py-2.5 rounded-lg bg-[#1E2230] text-[14px] text-[#F3F4F6] leading-relaxed">
-                    {msg.content}
-                  </div>
-                </div>
-              ) : (
-                /* AI message */
-                <div className="flex justify-start">
-                  <div className="w-full max-w-[95%]">
-                    {msg.isLoading ? (
-                      <div className="flex items-center gap-2 text-[14px] text-[#6B7280]">
-                        <Loader2 size={15} className="animate-spin" />
-                        <span>Thinking…</span>
-                      </div>
-                    ) : (
-                      <>
-                        <MarkdownContent content={msg.content} />
-                        {msg.image && (
-                          <ChartImage
-                            src={msg.image}
-                            alt="Generated visualization"
-                          />
-                        )}
-                        {msg.agent && (
-                          <p className="mt-1.5 text-[11px] text-[#6B7280]">
-                            via {agentLabel(msg.agent)}
-                          </p>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
+        {messages.length === 0 ? (
+          /* Empty state: Hero + Prompt suggestion cards */
+          <div className="flex flex-col items-center justify-center min-h-[65vh] max-w-2xl mx-auto px-4 text-center my-auto">
+            {/* Hero Icon */}
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600/20 to-indigo-500/10 border border-blue-500/30 flex items-center justify-center mb-4 text-[#3B82F6] shadow-sm">
+              <Sparkles size={22} />
             </div>
-          ))}
-          <div ref={messagesEndRef} />
-        </div>
+
+            <h1 className="text-[20px] font-semibold text-[#F3F4F6] tracking-tight">
+              How can I assist your business today?
+            </h1>
+            <p className="text-[13.5px] text-[#9CA3AF] mt-1.5 mb-8 max-w-md">
+              Ask about inventory, hardware specs, sales figures, or request visual charts and tables.
+            </p>
+
+            {/* Prompt Cards Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full text-left">
+              {PROMPT_SUGGESTIONS.map((card, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => sendMessage(card.prompt)}
+                  disabled={loading}
+                  className="group relative p-4 rounded-xl bg-[#151820] border border-[#272B35] hover:border-[#3B82F6]/60 hover:bg-[#181C26] transition-all duration-150 flex flex-col justify-between text-left disabled:opacity-50 cursor-pointer shadow-sm"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2.5">
+                      <span className={`p-1.5 rounded-lg ${card.badge}`}>
+                        <card.icon size={15} />
+                      </span>
+                      <span className="text-[13px] font-medium text-[#E5E7EB] group-hover:text-blue-400 transition-colors">
+                        {card.title}
+                      </span>
+                    </div>
+                    <ArrowRight
+                      size={14}
+                      className="text-[#6B7280] opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all"
+                    />
+                  </div>
+                  <p className="text-[12.5px] text-[#9CA3AF] group-hover:text-[#D1D5DB] transition-colors leading-snug">
+                    “{card.prompt}”
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          /* Active conversation transcript */
+          <div className="max-w-3xl mx-auto space-y-5">
+            {messages.map((msg, i) => (
+              <div key={i}>
+                {msg.role === "User_Message" ? (
+                  /* User message */
+                  <div className="flex justify-end">
+                    <div className="max-w-[75%] px-3.5 py-2.5 rounded-lg bg-[#1E2230] text-[14px] text-[#F3F4F6] leading-relaxed">
+                      {msg.content}
+                    </div>
+                  </div>
+                ) : (
+                  /* AI message */
+                  <div className="flex justify-start">
+                    <div className="w-full max-w-[95%]">
+                      {msg.isLoading ? (
+                        <div className="flex items-center gap-2 text-[14px] text-[#6B7280]">
+                          <Loader2 size={15} className="animate-spin" />
+                          <span>Thinking…</span>
+                        </div>
+                      ) : (
+                        <>
+                          <MarkdownContent content={msg.content} />
+                          {msg.image && (
+                            <ChartImage
+                              src={msg.image}
+                              alt="Generated visualization"
+                            />
+                          )}
+                          {msg.agent && (
+                            <p className="mt-1.5 text-[11px] text-[#6B7280]">
+                              via {agentLabel(msg.agent)}
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+        )}
 
         {/* Scroll-to-bottom button */}
         {showScrollBtn && (
@@ -453,7 +570,7 @@ function ChatView() {
             className="flex-1 px-3.5 py-2 text-[14px] text-[#F3F4F6] bg-[#151820] border border-[#272B35] rounded-md placeholder-[#4B5563] focus:outline-none focus:border-[#2563EB] disabled:opacity-50 transition-colors"
           />
           <button
-            onClick={sendMessage}
+            onClick={() => sendMessage()}
             disabled={loading || !input.trim()}
             className="flex items-center justify-center w-9 h-9 rounded-md bg-[#2563EB] text-white hover:bg-[#1D4ED8] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             title="Send message"
