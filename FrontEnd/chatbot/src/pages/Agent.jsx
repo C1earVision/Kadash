@@ -22,6 +22,7 @@ import {
 import { API_URL, AI_API_URL } from "../config/api";
 import { useNavigate } from "react-router-dom";
 import MarkdownContent, { ChartImage } from "../components/MarkdownContent";
+import InteractiveDashboard from "../components/InteractiveDashboard";
 
 /* ─── URL normaliser (unchanged logic) ─── */
 function normalizeVisualizationUrl(imageUrl) {
@@ -396,6 +397,7 @@ function ChatView() {
         content: res.data.answer,
         agent: res.data.agent,
         ...(imageUrl ? { image: imageUrl } : {}),
+        ...(res.data.dashboard ? { dashboard: res.data.dashboard } : {}),
       };
 
       let updatedMessages =
@@ -523,6 +525,9 @@ function ChatView() {
                       ) : (
                         <>
                           <MarkdownContent content={msg.content} />
+                          {msg.dashboard && (
+                            <InteractiveDashboard spec={msg.dashboard} />
+                          )}
                           {msg.image && (
                             <ChartImage
                               src={msg.image}

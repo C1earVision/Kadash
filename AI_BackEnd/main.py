@@ -65,14 +65,14 @@ def _normalize_image_url(image_url: str) -> str:
 
 def parse_visualization_answer(raw_answer):
     if raw_answer is None:
-        return None, None
+        return None, None, None
 
     if isinstance(raw_answer, dict):
-        content = raw_answer.get("content")
+        content = raw_answer.get("content") or raw_answer.get("answer") or ""
         image = raw_answer.get("image")
-        if image:
-            return content or "", _normalize_image_url(str(image))
-        return str(raw_answer), None
+        dashboard = raw_answer.get("dashboard")
+        norm_image = _normalize_image_url(str(image)) if image else None
+        return content, norm_image, dashboard
 
     text = str(raw_answer).strip()
     if text.startswith("```"):
@@ -84,16 +84,20 @@ def parse_visualization_answer(raw_answer):
     except json.JSONDecodeError:
         match = re.search(r"\{[\s\S]*\}", text)
         if not match:
-            return text, None
+            return text, None, None
         try:
             parsed = json.loads(match.group(0))
         except json.JSONDecodeError:
-            return text, None
+            return text, None, None
 
-    if isinstance(parsed, dict) and parsed.get("image"):
-        content = parsed.get("content") or text
-        return content, _normalize_image_url(str(parsed["image"]))
-    return text, None
+    if isinstance(parsed, dict):
+        content = parsed.get("content") or parsed.get("answer") or parsed.get("summary") or text
+        image = parsed.get("image")
+        dashboard = parsed.get("dashboard")
+        norm_image = _normalize_image_url(str(image)) if image else None
+        return content, norm_image, dashboard
+
+    return text, None, None
 
 
 
@@ -157,10 +161,12 @@ async def query_travel_agent(query:QueryRequest):
             else:
                 final_answer = "User has no access to this information"
         print(final_answer)
-        answer_text, image_url = parse_visualization_answer(final_answer)
+        answer_text, image_url, dashboard_data = parse_visualization_answer(final_answer)
         payload = {"answer": answer_text, "agent": agent_choice}
         if image_url:
             payload["image"] = image_url
+        if dashboard_data:
+            payload["dashboard"] = dashboard_data
         return payload
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})

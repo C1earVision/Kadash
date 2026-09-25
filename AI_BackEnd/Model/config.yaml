@@ -1,7 +1,21 @@
 llm:
-  openai:
-    provider: "openai"
-    model_name: "openai/gpt-oss-120b"
-  groq:
-    provider: "groq"
-    model_name: "qwen/qwen3.8-27b"
+  models:
+    # 1. Primary: 120B parameter model (highest reasoning & complex SQL generation capability)
+    - provider: "groq"
+      model_name: "openai/gpt-oss-120b"
+      name: "GPT-OSS 120B (Groq)"
+
+    # 2. First Fallback: 27B parameter Qwen model (outstanding tool-calling & structured data)
+    - provider: "groq"
+      model_name: "qwen/qwen3.8-27b"
+      name: "Qwen 3.8 27B (Groq)"
+
+    # 3. Second Fallback: 20B parameter model (fast, efficient, separate rate limits)
+    - provider: "groq"
+      model_name: "openai/gpt-oss-20b"
+      name: "GPT-OSS 20B (Groq)"
+
+    # 4. Optional OpenAI Fallback (activated automatically if OPENAI_API_KEY is present in .env)
+    - provider: "openai"
+      model_name: "gpt-4o-mini"
+      name: "GPT-4o Mini (OpenAI)"
