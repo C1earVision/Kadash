@@ -35,6 +35,7 @@ class modelLoader:
                 model=model_name,
                 api_key=groq_key,
                 temperature=0.1,
+                max_tokens=8000,
                 max_retries=1,  # Fast failover to next model on rate limit
             )
 
@@ -47,6 +48,7 @@ class modelLoader:
                 api_key=openai_key,
                 temperature=0.1,
                 max_retries=1,
+                max_tokens=8000
             )
 
         return None

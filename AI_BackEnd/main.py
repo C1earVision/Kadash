@@ -63,10 +63,54 @@ def _normalize_image_url(image_url: str) -> str:
     return image_url
 
 
+def _extract_json_object(text):
+    """Find the first balanced top-level JSON object in *text* using brace counting.
+    Returns the parsed dict on success, or None on failure."""
+    start = text.find("{")
+    if start == -1:
+        return None
+
+    depth = 0
+    in_string = False
+    escape_next = False
+
+    for i in range(start, len(text)):
+        ch = text[i]
+        if escape_next:
+            escape_next = False
+            continue
+        if ch == "\\":
+            escape_next = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                candidate = text[start : i + 1]
+                try:
+                    return json.loads(candidate, strict=False)
+                except json.JSONDecodeError:
+                    # This balanced block wasn't valid JSON; keep scanning
+                    start = text.find("{", i + 1)
+                    if start == -1:
+                        return None
+                    depth = 0
+    return None
+
+
 def parse_visualization_answer(raw_answer):
+    print("PARSER FIX ACTIVE")
+
     if raw_answer is None:
         return None, None, None
 
+    # --- Already a dict (tool returned structured output) ---
     if isinstance(raw_answer, dict):
         content = raw_answer.get("content") or raw_answer.get("answer") or ""
         image = raw_answer.get("image")
@@ -75,28 +119,59 @@ def parse_visualization_answer(raw_answer):
         return content, norm_image, dashboard
 
     text = str(raw_answer).strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
-        text = re.sub(r"\s*```$", "", text)
 
+    # --- Strip markdown code fences (```json ... ```) ---
+    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*```\s*$", "", text)
+    text = text.strip()
+
+    print("RAW TEXT BEING PARSED:", repr(text[:500]))
+
+    # --- Attempt 1: Direct json.loads on the full text ---
+    parsed = None
     try:
-        parsed = json.loads(text)
+        parsed = json.loads(text, strict=False)
     except json.JSONDecodeError:
-        match = re.search(r"\{[\s\S]*\}", text)
-        if not match:
-            return text, None, None
-        try:
-            parsed = json.loads(match.group(0))
-        except json.JSONDecodeError:
-            return text, None, None
+        pass
 
+    # --- Attempt 2: Balanced-brace extraction ---
+    if parsed is None:
+        print("Direct parse failed, trying balanced-brace extraction")
+        parsed = _extract_json_object(text)
+
+    # --- Attempt 3: The LLM sometimes double-escapes newlines ---
+    if parsed is None:
+        try:
+            cleaned = text.replace("\\n", "\n").replace("\\'", "'")
+            parsed = json.loads(cleaned, strict=False)
+        except json.JSONDecodeError:
+            parsed = _extract_json_object(cleaned) if cleaned != text else None
+
+    # --- Extract fields from the parsed dict ---
     if isinstance(parsed, dict):
-        content = parsed.get("content") or parsed.get("answer") or parsed.get("summary") or text
+        content = (
+            parsed.get("content")
+            or parsed.get("answer")
+            or parsed.get("summary")
+            or ""
+        )
         image = parsed.get("image")
         dashboard = parsed.get("dashboard")
+
+        # If there is no separate "dashboard" key but the top-level dict looks
+        # like a dashboard spec itself (has "pages" or "title" + "charts"), treat
+        # the whole thing as a dashboard.
+        if dashboard is None and ("pages" in parsed or "charts" in parsed):
+            dashboard = parsed
+            # Use "content" we already extracted; if it was empty, synthesize one
+            if not content:
+                content = parsed.get("title", "Dashboard")
+
         norm_image = _normalize_image_url(str(image)) if image else None
         return content, norm_image, dashboard
 
+    # --- All parsing failed; return the raw text as content ---
+    print("All JSON parse attempts failed, returning raw text")
     return text, None, None
 
 
@@ -161,6 +236,7 @@ async def query_travel_agent(query:QueryRequest):
             else:
                 final_answer = "User has no access to this information"
         print(final_answer)
+        print("FINAL ANSWER FROM AGENT:", repr(final_answer))
         answer_text, image_url, dashboard_data = parse_visualization_answer(final_answer)
         payload = {"answer": answer_text, "agent": agent_choice}
         if image_url:

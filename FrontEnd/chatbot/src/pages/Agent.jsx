@@ -17,12 +17,54 @@ import {
   PackageSearch,
   Cpu,
   ArrowRight,
-  RotateCcw
+  RotateCcw,
+  LayoutDashboard,
+  AlertTriangle
 } from "lucide-react";
 import { API_URL, AI_API_URL } from "../config/api";
 import { useNavigate } from "react-router-dom";
 import MarkdownContent, { ChartImage } from "../components/MarkdownContent";
 import InteractiveDashboard from "../components/InteractiveDashboard";
+
+/* ─── Client-side fallback: extract dashboard JSON from raw text ─── */
+function tryExtractDashboard(text) {
+  if (!text || typeof text !== "string") return null;
+
+  // Find the first '{' that could be JSON
+  const start = text.indexOf("{");
+  if (start === -1) return null;
+
+  // Balanced-brace scan
+  let depth = 0;
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escapeNext) { escapeNext = false; continue; }
+    if (ch === "\\") { escapeNext = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        try {
+          const parsed = JSON.parse(text.slice(start, i + 1));
+          // Check if it's a dashboard spec (has "dashboard" key or "pages" array)
+          if (parsed.dashboard && typeof parsed.dashboard === "object") {
+            return parsed.dashboard;
+          }
+          if (Array.isArray(parsed.pages) || Array.isArray(parsed.charts)) {
+            return parsed;
+          }
+        } catch { /* not valid JSON, ignore */ }
+        return null;
+      }
+    }
+  }
+  return null;
+}
 
 /* ─── URL normaliser (unchanged logic) ─── */
 function normalizeVisualizationUrl(imageUrl) {
@@ -282,17 +324,17 @@ function DashBoard() {
 /* ─── Prompt suggestion definitions ─── */
 const PROMPT_SUGGESTIONS = [
   {
-    icon: PackageSearch,
+    icon: LayoutDashboard,
     badge: "bg-blue-500/10 text-blue-400 border border-blue-500/20",
-    title: "Stock & Inventory",
-    prompt: "What products do we currently have in stock?",
-    description: "Check available hardware units and stock levels",
+    title: "PowerBI Dashboard",
+    prompt: "Generate a comprehensive multi-page PowerBI business dashboard with revenue trends, category breakdown, and operational insights",
+    description: "Multi-page interactive report with executive takeaways and KPIs",
   },
   {
     icon: TrendingUp,
     badge: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
     title: "Top Performers",
-    prompt: "Show me our top 5 best-selling products",
+    prompt: "Show me our top 5 best-selling products by order volume",
     description: "Analyze most popular hardware by order volume",
   },
   {
@@ -303,11 +345,11 @@ const PROMPT_SUGGESTIONS = [
     description: "Create a visual revenue breakdown over time",
   },
   {
-    icon: Cpu,
+    icon: AlertTriangle,
     badge: "bg-amber-500/10 text-amber-400 border border-amber-500/20",
-    title: "Hardware Pricing",
-    prompt: "Show all GPUs and their prices in a table",
-    description: "Compare graphics cards, pricing, and specs",
+    title: "Low Stock Alert",
+    prompt: "Which products have fewer than 15 units remaining in stock? Show them in a table",
+    description: "Identify inventory items needing immediate restocking",
   },
 ];
 
@@ -522,25 +564,39 @@ function ChatView() {
                           <Loader2 size={15} className="animate-spin" />
                           <span>Thinking…</span>
                         </div>
-                      ) : (
-                        <>
-                          <MarkdownContent content={msg.content} />
-                          {msg.dashboard && (
-                            <InteractiveDashboard spec={msg.dashboard} />
-                          )}
-                          {msg.image && (
-                            <ChartImage
-                              src={msg.image}
-                              alt="Generated visualization"
-                            />
-                          )}
-                          {msg.agent && (
-                            <p className="mt-1.5 text-[11px] text-[#6B7280]">
-                              via {agentLabel(msg.agent)}
-                            </p>
-                          )}
-                        </>
-                      )}
+                      ) : (() => {
+                          // Determine dashboard spec — use server-provided or extract from content
+                          const dashboardSpec = msg.dashboard || tryExtractDashboard(msg.content);
+                          // If dashboard was extracted from content, strip the raw JSON from displayed text
+                          let displayContent = msg.content;
+                          if (!msg.dashboard && dashboardSpec && typeof msg.content === "string") {
+                            const jsonStart = msg.content.indexOf("{");
+                            if (jsonStart !== -1) {
+                              displayContent = msg.content.slice(0, jsonStart).trim();
+                            }
+                          }
+                          return (
+                            <>
+                              {displayContent && (
+                                <MarkdownContent content={displayContent} />
+                              )}
+                              {dashboardSpec && (
+                                <InteractiveDashboard spec={dashboardSpec} />
+                              )}
+                              {msg.image && (
+                                <ChartImage
+                                  src={msg.image}
+                                  alt="Generated visualization"
+                                />
+                              )}
+                              {msg.agent && (
+                                <p className="mt-1.5 text-[11px] text-[#6B7280]">
+                                  via {agentLabel(msg.agent)}
+                                </p>
+                              )}
+                            </>
+                          );
+                        })()}
                     </div>
                   </div>
                 )}
