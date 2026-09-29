@@ -14,6 +14,8 @@ from pydantic import BaseModel
 import json
 import re
 import os
+import time
+from Utils.ModelLoader import is_rate_limit_error, extract_retry_delay
 load_dotenv()
 
 app = FastAPI()
@@ -45,14 +47,22 @@ class QueryRequest(BaseModel):
     question: str
     admin: bool
 
-def use_agent(messages, agent):
-    output = agent.invoke(messages)
+def use_agent(messages, agent, max_retries=2):
+    for attempt in range(max_retries):
+        try:
+            output = agent.invoke(messages)
 
-    if isinstance(output, dict) and "messages" in output:
-        return output["messages"][-1].content
-        
-    else:
-        return str(output)
+            if isinstance(output, dict) and "messages" in output:
+                return output["messages"][-1].content
+            else:
+                return str(output)
+        except Exception as e:
+            if is_rate_limit_error(e) and attempt < max_retries - 1:
+                delay = extract_retry_delay(e, attempt + 1)
+                print(f"[use_agent] Rate limit encountered during agent invocation. Retrying in {delay:.2f}s (attempt {attempt + 1}/{max_retries})...")
+                time.sleep(delay)
+            else:
+                raise
 
 
 def _normalize_image_url(image_url: str) -> str:
@@ -104,6 +114,50 @@ def _extract_json_object(text):
     return None
 
 
+def _clean_dashboard_content(content: str) -> str:
+    """
+    Cleans text content accompanying an interactive dashboard so the user is only presented
+    with Key Takeaways and Recommendations, completely stripping out redundant dashboard
+    specifications, page overviews, visual descriptions, schema chatter, and conversational filler.
+    """
+    if not content or not isinstance(content, str):
+        return ""
+
+    text = content.strip()
+
+    # 1. If text has a Key Takeaways header, discard any introductory chatter or dashboard specs preceding it
+    takeaways_match = re.search(
+        r"(?:^|\n)(#{1,4}\s*Key Takeaways|\*\*Key Takeaways\*\*)",
+        text,
+        re.IGNORECASE,
+    )
+    if takeaways_match:
+        text = text[takeaways_match.start():].strip()
+
+    # 2. Strip sections dedicated to dashboard structure, visuals, or page listings
+    unwanted_section_patterns = [
+        r"(?i)#{1,4}\s*(?:Dashboard Overview|Dashboard Structure|Report Structure|Visualizations?|Dashboard Pages?|Pages? Breakdown|Report Pages?|Report Overview|Overview of the Dashboard).*?(?=(?:\n#{1,4}|\Z))",
+        # Bullet points describing pages: e.g. "- **Page 1: Executive Overview**..."
+        r"(?i)(?:^|\n)[*-]?\s*\**Page \d+[:\s\*\-].*?(?=(?:\n[*-]|\n#{1,4}|\Z))",
+        # Bullet points describing charts: e.g. "- **Chart 1: Area Chart**..."
+        r"(?i)(?:^|\n)[*-]?\s*\**(?:Chart|Visual)\s*\d+[:\s\*\-].*?(?=(?:\n[*-]|\n#{1,4}|\Z))",
+    ]
+    for pat in unwanted_section_patterns:
+        text = re.sub(pat, "\n", text, flags=re.DOTALL)
+
+    # 3. Strip individual sentences that describe generating the dashboard or visual specs
+    unwanted_sentence_patterns = [
+        r"(?i)(?:^|\n)\s*(?:Here is the (?:interactive )?dashboard|Below is the (?:interactive )?dashboard|The (?:interactive )?dashboard below|This dashboard (?:features|consists of|contains|provides|includes|is structured)|We have generated a (?:multi-page )?dashboard|In this report, we present|The report is organized into).*?(?:\.|\n)",
+        r"(?i)(?:^|\n)\s*(?:We queried the (?:database|tables?)|Using SQL aggregations?|The data was retrieved from|Through dynamic database discovery).*?(?:\.|\n)",
+    ]
+    for pat in unwanted_sentence_patterns:
+        text = re.sub(pat, "\n", text)
+
+    # 4. Clean up excess whitespace
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    return text
+
+
 def parse_visualization_answer(raw_answer):
     print("PARSER FIX ACTIVE")
 
@@ -115,6 +169,8 @@ def parse_visualization_answer(raw_answer):
         content = raw_answer.get("content") or raw_answer.get("answer") or ""
         image = raw_answer.get("image")
         dashboard = raw_answer.get("dashboard")
+        if dashboard:
+            content = _clean_dashboard_content(content)
         norm_image = _normalize_image_url(str(image)) if image else None
         return content, norm_image, dashboard
 
@@ -166,6 +222,9 @@ def parse_visualization_answer(raw_answer):
             # Use "content" we already extracted; if it was empty, synthesize one
             if not content:
                 content = parsed.get("title", "Dashboard")
+
+        if dashboard:
+            content = _clean_dashboard_content(content)
 
         norm_image = _normalize_image_url(str(image)) if image else None
         return content, norm_image, dashboard

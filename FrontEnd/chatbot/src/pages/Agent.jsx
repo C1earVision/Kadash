@@ -30,11 +30,9 @@ import InteractiveDashboard from "../components/InteractiveDashboard";
 function tryExtractDashboard(text) {
   if (!text || typeof text !== "string") return null;
 
-  // Find the first '{' that could be JSON
   const start = text.indexOf("{");
   if (start === -1) return null;
 
-  // Balanced-brace scan
   let depth = 0;
   let inString = false;
   let escapeNext = false;
@@ -51,12 +49,17 @@ function tryExtractDashboard(text) {
       if (depth === 0) {
         try {
           const parsed = JSON.parse(text.slice(start, i + 1));
-          // Check if it's a dashboard spec (has "dashboard" key or "pages" array)
           if (parsed.dashboard && typeof parsed.dashboard === "object") {
-            return parsed.dashboard;
+            return {
+              dashboard: parsed.dashboard,
+              content: parsed.content || parsed.answer || "",
+            };
           }
           if (Array.isArray(parsed.pages) || Array.isArray(parsed.charts)) {
-            return parsed;
+            return {
+              dashboard: parsed,
+              content: parsed.content || "",
+            };
           }
         } catch { /* not valid JSON, ignore */ }
         return null;
@@ -64,6 +67,29 @@ function tryExtractDashboard(text) {
     }
   }
   return null;
+}
+
+/* ─── Clean dashboard accompanying text to show only Key Takeaways & Recommendations ─── */
+function cleanDashboardText(content) {
+  if (!content || typeof content !== "string") return "";
+  let text = content.trim();
+
+  // If there's a Key Takeaways header, slice from it to drop any intro fluff
+  const match = text.search(/(?:^|\n)(#{1,4}\s*Key Takeaways|\*\*Key Takeaways\*\*)/i);
+  if (match !== -1) {
+    text = text.slice(match).trim();
+  }
+
+  // Remove dashboard structure sections
+  text = text.replace(/#{1,4}\s*(?:Dashboard Overview|Dashboard Structure|Report Structure|Visualizations?|Dashboard Pages?|Pages? Breakdown|Report Pages?|Report Overview)[\s\S]*?(?=(?:\n#{1,4}|\Z))/gi, "");
+  // Remove "Page X: ..." lines
+  text = text.replace(/(?:^|\n)[*-]?\s*\**Page \d+[:\s\*\-][\s\S]*?(?=(?:\n[*-]|\n#{1,4}|\Z))/gi, "");
+  // Remove "Chart X: ..." lines
+  text = text.replace(/(?:^|\n)[*-]?\s*\**(?:Chart|Visual)\s*\d+[:\s\*\-][\s\S]*?(?=(?:\n[*-]|\n#{1,4}|\Z))/gi, "");
+  // Remove filler sentences
+  text = text.replace(/(?:^|\n)\s*(?:Here is the (?:interactive )?dashboard|Below is the (?:interactive )?dashboard|The (?:interactive )?dashboard below|This dashboard (?:features|consists of|contains|provides|includes|is structured)|We have generated a (?:multi-page )?dashboard|In this report, we present)[\s\S]*?(?:\.|\n)/gi, "");
+
+  return text.replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /* ─── URL normaliser (unchanged logic) ─── */
@@ -566,14 +592,21 @@ function ChatView() {
                         </div>
                       ) : (() => {
                           // Determine dashboard spec — use server-provided or extract from content
-                          const dashboardSpec = msg.dashboard || tryExtractDashboard(msg.content);
-                          // If dashboard was extracted from content, strip the raw JSON from displayed text
+                          const extracted = tryExtractDashboard(msg.content);
+                          const dashboardSpec = msg.dashboard || extracted?.dashboard || (extracted && !extracted.dashboard ? extracted : null);
+                          // If dashboard was extracted from content, use extracted content or strip raw JSON
                           let displayContent = msg.content;
-                          if (!msg.dashboard && dashboardSpec && typeof msg.content === "string") {
+                          if (extracted?.content) {
+                            displayContent = extracted.content;
+                          } else if (!msg.dashboard && dashboardSpec && typeof msg.content === "string") {
                             const jsonStart = msg.content.indexOf("{");
                             if (jsonStart !== -1) {
                               displayContent = msg.content.slice(0, jsonStart).trim();
                             }
+                          }
+                          // When displaying a dashboard, ensure text only contains key takeaways and recommendations
+                          if (dashboardSpec && displayContent) {
+                            displayContent = cleanDashboardText(displayContent);
                           }
                           return (
                             <>

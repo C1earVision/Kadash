@@ -17,74 +17,36 @@ import {
   Legend,
 } from "recharts";
 import {
-  TrendingUp,
-  TrendingDown,
   Maximize2,
   Minimize2,
   X,
   BarChart2,
-  Layers,
-  Info,
-  Sparkles,
-  Download,
   Table as TableIcon,
-  ChevronLeft,
-  ChevronRight,
-  LayoutDashboard,
-  DollarSign,
-  Package,
-  Activity,
-  Users,
-  AlertTriangle,
-  CheckCircle2,
-  FileSpreadsheet,
 } from "lucide-react";
 
-// Curated SaaS PowerBI color palette
-const PALETTE = [
-  "#3B82F6", // Electric Blue
-  "#10B981", // Emerald
-  "#8B5CF6", // Purple
-  "#F59E0B", // Amber
-  "#EC4899", // Magenta/Pink
-  "#06B6D4", // Cyan
-  "#6366F1", // Indigo
-  "#14B8A6", // Teal
-  "#F97316", // Coral
-  "#84CC16", // Lime
+/* ─── Chart color palette — muted, professional, distinguishable ─── */
+const COLORS = [
+  "#5B8DEF",
+  "#3EBD93",
+  "#E8A44A",
+  "#8B7FDE",
+  "#E06C75",
+  "#56B6C2",
+  "#98C379",
+  "#D19A66",
 ];
-
-/* ─── Page Icon Resolver ─── */
-function getPageIcon(iconName) {
-  const icon = (iconName || "").toLowerCase();
-  if (icon.includes("over") || icon.includes("exec") || icon.includes("dash"))
-    return LayoutDashboard;
-  if (icon.includes("fin") || icon.includes("rev") || icon.includes("mon"))
-    return DollarSign;
-  if (icon.includes("prod") || icon.includes("cat") || icon.includes("item"))
-    return Package;
-  if (icon.includes("oper") || icon.includes("inv") || icon.includes("stock"))
-    return Activity;
-  if (icon.includes("cust") || icon.includes("user") || icon.includes("client"))
-    return Users;
-  if (icon.includes("alert") || icon.includes("risk") || icon.includes("warn"))
-    return AlertTriangle;
-  return BarChart2;
-}
 
 /* ─── Normalizer for Backward & Forward Compatibility ─── */
 function normalizeDashboardSpec(spec) {
   if (!spec) return null;
 
-  // If pages array is present and populated
   if (Array.isArray(spec.pages) && spec.pages.length > 0) {
     return {
-      title: spec.title || "Enterprise Business Intelligence Report",
+      title: spec.title || "Business Intelligence Report",
       subtitle: spec.subtitle || spec.description || "",
       pages: spec.pages.map((p, idx) => ({
         id: p.id || `page-${idx + 1}`,
         name: p.name || `Page ${idx + 1}`,
-        icon: p.icon || "overview",
         summary: p.summary || p.description || "",
         insights: Array.isArray(p.insights) ? p.insights : [],
         kpis: Array.isArray(p.kpis) ? p.kpis : [],
@@ -93,20 +55,18 @@ function normalizeDashboardSpec(spec) {
     };
   }
 
-  // Fallback: If legacy single-page spec (charts and/or kpis at top level)
   const legacyCharts = Array.isArray(spec.charts) ? spec.charts : [];
   const legacyKpis = Array.isArray(spec.kpis) ? spec.kpis : [];
   const legacyInsights = Array.isArray(spec.insights) ? spec.insights : [];
 
   if (legacyCharts.length > 0 || legacyKpis.length > 0) {
     return {
-      title: spec.title || "Analytical Summary Report",
+      title: spec.title || "Analytical Summary",
       subtitle: spec.description || "",
       pages: [
         {
           id: "page-1",
-          name: spec.title || "Executive Overview",
-          icon: "overview",
+          name: spec.title || "Overview",
           summary: spec.description || "",
           insights: legacyInsights,
           kpis: legacyKpis,
@@ -119,18 +79,18 @@ function normalizeDashboardSpec(spec) {
   return null;
 }
 
-/* ─── Custom Dark Tooltip ─── */
-function CustomTooltip({ active, payload, label }) {
-  if (!active || !payload || !payload.length) return null;
+/* ─── Tooltip ─── */
+function ChartTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
 
   return (
-    <div className="rounded-xl border border-[#2E3446] bg-[#0A0C12]/95 backdrop-blur-md p-3 shadow-2xl text-xs z-50 min-w-[140px]">
+    <div className="rounded bg-[#1A1D24] border border-[#262A32] px-3 py-2 shadow-lg text-[11px]">
       {label && (
-        <p className="font-semibold text-[#F3F4F6] pb-1.5 mb-2 border-b border-[#1E2230]">
+        <p className="font-medium text-[#D0D3D8] mb-1.5 pb-1.5 border-b border-[#262A32]">
           {label}
         </p>
       )}
-      <div className="space-y-1.5">
+      <div className="space-y-1">
         {payload.map((entry, idx) => {
           const val =
             typeof entry.value === "number"
@@ -138,25 +98,19 @@ function CustomTooltip({ active, payload, label }) {
                   maximumFractionDigits: 2,
                 })
               : entry.value;
-
           return (
-            <div
-              key={idx}
-              className="flex items-center justify-between gap-3 text-[12px]"
-            >
+            <div key={idx} className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-1.5">
                 <span
-                  className="w-2.5 h-2.5 rounded-full inline-block shrink-0 shadow-sm"
+                  className="w-2 h-2 rounded-full shrink-0"
                   style={{
                     backgroundColor:
-                      entry.color || entry.fill || PALETTE[idx % PALETTE.length],
+                      entry.color || entry.fill || COLORS[idx % COLORS.length],
                   }}
                 />
-                <span className="text-[#9CA3AF] truncate max-w-[110px]">
-                  {entry.name}:
-                </span>
+                <span className="text-[#8B8F98]">{entry.name}</span>
               </div>
-              <span className="font-mono font-medium text-[#F3F4F6]">
+              <span className="font-mono font-medium text-[#D0D3D8]">
                 {val}
               </span>
             </div>
@@ -167,146 +121,129 @@ function CustomTooltip({ active, payload, label }) {
   );
 }
 
-/* ─── KPI Scorecard Component ─── */
-function KpiCard({ kpi }) {
-  if (!kpi) return null;
-  const isPositive =
-    typeof kpi.change === "string" && kpi.change.trim().startsWith("+");
-  const isNegative =
-    typeof kpi.change === "string" && kpi.change.trim().startsWith("-");
-  const isWarning =
-    typeof kpi.change === "string" &&
-    (kpi.change.toLowerCase().includes("warn") ||
-      kpi.change.toLowerCase().includes("risk") ||
-      kpi.change.toLowerCase().includes("alert"));
+/* ─── Shared axis/grid props ─── */
+const GRID_PROPS = { stroke: "#1E2128", vertical: false };
+const X_AXIS_PROPS = {
+  stroke: "#4A4E58",
+  fontSize: 11,
+  tickLine: false,
+  axisLine: false,
+  tickMargin: 8,
+};
+const Y_AXIS_PROPS = {
+  stroke: "#4A4E58",
+  fontSize: 11,
+  tickLine: false,
+  axisLine: false,
+  width: 48,
+  tickFormatter: (v) =>
+    v >= 1_000_000
+      ? `${(v / 1_000_000).toFixed(1)}M`
+      : v >= 1_000
+      ? `${(v / 1_000).toFixed(0)}k`
+      : v,
+};
+const LEGEND_PROPS = {
+  wrapperStyle: { fontSize: "11px", paddingTop: "12px", color: "#6B7075" },
+  iconType: "circle",
+  iconSize: 6,
+};
+const MARGIN = { top: 8, right: 8, left: 0, bottom: 0 };
 
-  return (
-    <div className="group relative p-4 rounded-xl bg-gradient-to-b from-[#161922] to-[#12141C] border border-[#272B35] hover:border-[#383F50] transition-all shadow-sm flex flex-col justify-between">
-      <div className="flex items-center justify-between text-[#9CA3AF] text-xs font-medium mb-1.5 gap-2">
-        <span className="truncate tracking-wide">{kpi.label}</span>
-        {kpi.change && (
-          <span
-            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium shrink-0 ${
-              isPositive
-                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                : isNegative
-                ? "bg-rose-500/10 text-rose-400 border border-rose-500/20"
-                : isWarning
-                ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
-            }`}
-          >
-            {isPositive && <TrendingUp size={11} />}
-            {isNegative && <TrendingDown size={11} />}
-            {isWarning && <AlertTriangle size={11} />}
-            {kpi.change}
-          </span>
-        )}
-      </div>
-
-      <div className="text-[22px] font-bold text-[#F9FAFB] tracking-tight font-mono my-1">
-        {typeof kpi.value === "number" ? kpi.value.toLocaleString() : kpi.value}
-      </div>
-
-      {kpi.description && (
-        <p className="text-[11px] text-[#6B7280] mt-1 truncate">
-          {kpi.description}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/* ─── Individual Chart Card with View Toggle & Data Table ─── */
-function ChartCard({ chart, onExpand, isFullscreen = false }) {
-  const [viewMode, setViewMode] = useState("chart"); // 'chart' | 'table'
-  const chartType = (chart.type || "bar").toLowerCase();
-  const xAxisKey = chart.xAxisKey || "name";
+/* ─── Chart Card ─── */
+function ChartCard({ chart, onExpand, expanded = false }) {
+  const [view, setView] = useState("chart");
+  const type = (chart.type || "bar").toLowerCase();
+  const xKey = chart.xAxisKey || "name";
   const data = Array.isArray(chart.data) ? chart.data : [];
 
-  // Determine metric data keys
   const dataKeys =
     Array.isArray(chart.dataKeys) && chart.dataKeys.length > 0
       ? chart.dataKeys
-      : [{ key: "value", name: chart.metricName || "Value", color: PALETTE[0] }];
+      : [{ key: "value", name: chart.metricName || "Value", color: COLORS[0] }];
 
-  const chartHeight = isFullscreen ? 340 : 270;
+  const h = expanded ? 360 : 260;
 
   return (
-    <div className="flex flex-col rounded-xl bg-gradient-to-b from-[#151821] to-[#11131A] border border-[#272B35] p-4 shadow-sm hover:border-[#383F50] transition-colors">
-      {/* Chart Header */}
-      <div className="flex items-start justify-between mb-3.5 gap-2">
+    <div className="group flex flex-col">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-2.5 gap-2">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h4 className="text-[14px] font-semibold text-[#F3F4F6] tracking-tight truncate">
-              {chart.title}
-            </h4>
-            <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-[#1F2430] text-[#9CA3AF] border border-[#2E3446]">
-              {chartType}
-            </span>
-          </div>
+          <h4 className="text-[13px] font-medium text-[#D0D3D8] leading-snug">
+            {chart.title}
+          </h4>
           {chart.description && (
-            <p className="text-[12px] text-[#9CA3AF] mt-0.5 truncate">
+            <p className="text-[11px] text-[#4A4E58] mt-0.5 leading-normal">
               {chart.description}
             </p>
           )}
         </div>
-
-        {/* Action Controls */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-0.5 shrink-0">
           <button
-            onClick={() => setViewMode(viewMode === "chart" ? "table" : "chart")}
-            className={`p-1.5 rounded-md transition-colors text-xs flex items-center gap-1 ${
-              viewMode === "table"
-                ? "bg-blue-600 text-white"
-                : "text-[#9CA3AF] hover:text-[#F3F4F6] hover:bg-[#1E2230]"
+            onClick={() => setView((v) => (v === "chart" ? "table" : "chart"))}
+            className={`p-1 rounded transition-colors ${
+              view === "table"
+                ? "text-[#5B8DEF]"
+                : "text-[#3A3E48] hover:text-[#8B8F98]"
             }`}
-            title={viewMode === "chart" ? "View data table" : "View chart visual"}
+            title={view === "chart" ? "View data" : "View chart"}
           >
-            {viewMode === "chart" ? <TableIcon size={13} /> : <BarChart2 size={13} />}
+            {view === "chart" ? (
+              <TableIcon size={14} />
+            ) : (
+              <BarChart2 size={14} />
+            )}
           </button>
           {onExpand && (
             <button
               onClick={() => onExpand(chart)}
-              className="p-1.5 rounded-md text-[#9CA3AF] hover:text-[#F3F4F6] hover:bg-[#1E2230] transition-colors"
-              title="Expand visual"
+              className="p-1 rounded text-[#3A3E48] hover:text-[#8B8F98] transition-colors"
+              title="Expand"
             >
-              <Maximize2 size={13} />
+              <Maximize2 size={14} />
             </button>
           )}
         </div>
       </div>
 
-      {/* Chart Canvas or Data Table */}
-      <div style={{ height: `${chartHeight}px` }} className="w-full">
+      {/* Canvas */}
+      <div style={{ height: `${h}px` }} className="w-full">
         {data.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-xs text-[#6B7280]">
-            No data points available
+          <div className="h-full flex items-center justify-center text-[12px] text-[#4A4E58]">
+            No data available
           </div>
-        ) : viewMode === "table" ? (
-          /* Data Table View */
-          <div className="h-full overflow-auto rounded-lg border border-[#222734] bg-[#0E1017]">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-[#161922] text-[#9CA3AF] sticky top-0 border-b border-[#222734] z-10">
+        ) : view === "table" ? (
+          /* ── Data Table ── */
+          <div className="h-full overflow-auto rounded border border-[#1E2128] bg-[#0E1017]">
+            <table className="w-full text-left text-[11px] border-collapse">
+              <thead className="bg-[#14161C] text-[#6B7075] sticky top-0 z-10">
                 <tr>
-                  <th className="p-2.5 font-medium text-[#6B7280] w-10">#</th>
-                  <th className="p-2.5 font-medium capitalize">{xAxisKey}</th>
+                  <th className="px-3 py-2 font-medium w-8">#</th>
+                  <th className="px-3 py-2 font-medium">{xKey}</th>
                   {dataKeys.map((dk) => (
-                    <th key={dk.key} className="p-2.5 font-medium text-right capitalize">
+                    <th
+                      key={dk.key}
+                      className="px-3 py-2 font-medium text-right"
+                    >
                       {dk.name || dk.key}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#1A1E29] text-[#E5E7EB]">
-                {data.map((row, rIdx) => (
-                  <tr key={rIdx} className="hover:bg-[#161A24] transition-colors">
-                    <td className="p-2.5 text-[#6B7280] font-mono">{rIdx + 1}</td>
-                    <td className="p-2.5 font-medium text-[#F3F4F6]">
-                      {String(row[xAxisKey] ?? "")}
+              <tbody className="text-[#B0B4BC] divide-y divide-[#1A1D24]">
+                {data.map((row, ri) => (
+                  <tr key={ri} className="hover:bg-[#14161C]/60">
+                    <td className="px-3 py-2 text-[#4A4E58] font-mono">
+                      {ri + 1}
+                    </td>
+                    <td className="px-3 py-2 text-[#D0D3D8]">
+                      {String(row[xKey] ?? "")}
                     </td>
                     {dataKeys.map((dk) => (
-                      <td key={dk.key} className="p-2.5 text-right font-mono text-[#93C5FD]">
+                      <td
+                        key={dk.key}
+                        className="px-3 py-2 text-right font-mono"
+                      >
                         {typeof row[dk.key] === "number"
                           ? row[dk.key].toLocaleString(undefined, {
                               maximumFractionDigits: 2,
@@ -319,165 +256,114 @@ function ChartCard({ chart, onExpand, isFullscreen = false }) {
               </tbody>
             </table>
           </div>
-        ) : chartType === "line" ? (
-          /* Line Chart */
+        ) : type === "line" ? (
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 10, right: 15, left: -15, bottom: 0 }}>
-              <CartesianGrid stroke="#1E2230" strokeDasharray="3 3" vertical={false} />
-              <XAxis
-                dataKey={xAxisKey}
-                stroke="#6B7280"
-                fontSize={11}
-                tickLine={false}
-                axisLine={{ stroke: "#272B35" }}
-              />
-              <YAxis
-                stroke="#6B7280"
-                fontSize={11}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v)}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend
-                wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }}
-                iconType="circle"
-              />
+            <LineChart data={data} margin={MARGIN}>
+              <CartesianGrid {...GRID_PROPS} />
+              <XAxis dataKey={xKey} {...X_AXIS_PROPS} />
+              <YAxis {...Y_AXIS_PROPS} />
+              <Tooltip content={<ChartTooltip />} />
+              <Legend {...LEGEND_PROPS} />
               {dataKeys.map((dk, i) => (
                 <Line
                   key={dk.key}
                   type="monotone"
                   dataKey={dk.key}
                   name={dk.name || dk.key}
-                  stroke={dk.color || PALETTE[i % PALETTE.length]}
-                  strokeWidth={2.5}
-                  dot={{ fill: dk.color || PALETTE[i % PALETTE.length], r: 3 }}
-                  activeDot={{ r: 5 }}
+                  stroke={dk.color || COLORS[i % COLORS.length]}
+                  strokeWidth={2}
+                  dot={{ fill: dk.color || COLORS[i % COLORS.length], r: 2.5, strokeWidth: 0 }}
+                  activeDot={{ r: 4, strokeWidth: 0 }}
                 />
               ))}
             </LineChart>
           </ResponsiveContainer>
-        ) : chartType === "area" ? (
-          /* Area Chart */
+        ) : type === "area" ? (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 10, right: 15, left: -15, bottom: 0 }}>
+            <AreaChart data={data} margin={MARGIN}>
               <defs>
                 {dataKeys.map((dk, i) => {
-                  const color = dk.color || PALETTE[i % PALETTE.length];
+                  const c = dk.color || COLORS[i % COLORS.length];
                   return (
                     <linearGradient
-                      key={`grad_${dk.key}`}
-                      id={`grad_${dk.key}`}
+                      key={`g_${dk.key}`}
+                      id={`g_${dk.key}`}
                       x1="0"
                       y1="0"
                       x2="0"
                       y2="1"
                     >
-                      <stop offset="5%" stopColor={color} stopOpacity={0.45} />
-                      <stop offset="95%" stopColor={color} stopOpacity={0.0} />
+                      <stop offset="5%" stopColor={c} stopOpacity={0.18} />
+                      <stop offset="95%" stopColor={c} stopOpacity={0} />
                     </linearGradient>
                   );
                 })}
               </defs>
-              <CartesianGrid stroke="#1E2230" strokeDasharray="3 3" vertical={false} />
-              <XAxis
-                dataKey={xAxisKey}
-                stroke="#6B7280"
-                fontSize={11}
-                tickLine={false}
-                axisLine={{ stroke: "#272B35" }}
-              />
-              <YAxis
-                stroke="#6B7280"
-                fontSize={11}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v)}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend
-                wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }}
-                iconType="circle"
-              />
+              <CartesianGrid {...GRID_PROPS} />
+              <XAxis dataKey={xKey} {...X_AXIS_PROPS} />
+              <YAxis {...Y_AXIS_PROPS} />
+              <Tooltip content={<ChartTooltip />} />
+              <Legend {...LEGEND_PROPS} />
               {dataKeys.map((dk, i) => {
-                const color = dk.color || PALETTE[i % PALETTE.length];
+                const c = dk.color || COLORS[i % COLORS.length];
                 return (
                   <Area
                     key={dk.key}
                     type="monotone"
                     dataKey={dk.key}
                     name={dk.name || dk.key}
-                    stroke={color}
-                    strokeWidth={2}
+                    stroke={c}
+                    strokeWidth={1.5}
                     fillOpacity={1}
-                    fill={`url(#grad_${dk.key})`}
+                    fill={`url(#g_${dk.key})`}
                   />
                 );
               })}
             </AreaChart>
           </ResponsiveContainer>
-        ) : chartType === "pie" || chartType === "donut" ? (
-          /* Pie / Donut Chart */
+        ) : type === "pie" || type === "donut" ? (
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
-              <Tooltip content={<CustomTooltip />} />
-              <Legend
-                wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }}
-                iconType="circle"
-              />
+              <Tooltip content={<ChartTooltip />} />
+              <Legend {...LEGEND_PROPS} />
               <Pie
                 data={data}
                 dataKey={dataKeys[0]?.key || "value"}
-                nameKey={xAxisKey}
+                nameKey={xKey}
                 cx="50%"
                 cy="50%"
-                innerRadius={chartType === "donut" ? 54 : 0}
-                outerRadius={85}
-                paddingAngle={2}
-                stroke="#151820"
-                strokeWidth={2}
+                innerRadius={type === "donut" ? 50 : 0}
+                outerRadius={80}
+                paddingAngle={1}
+                stroke="#0C0D12"
+                strokeWidth={1}
               >
                 {data.map((_, index) => (
                   <Cell
-                    key={`cell-${index}`}
-                    fill={PALETTE[index % PALETTE.length]}
+                    key={`c-${index}`}
+                    fill={COLORS[index % COLORS.length]}
                   />
                 ))}
               </Pie>
             </PieChart>
           </ResponsiveContainer>
         ) : (
-          /* Default: Bar Chart */
+          /* Default: Bar */
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data} margin={{ top: 10, right: 15, left: -15, bottom: 0 }}>
-              <CartesianGrid stroke="#1E2230" strokeDasharray="3 3" vertical={false} />
-              <XAxis
-                dataKey={xAxisKey}
-                stroke="#6B7280"
-                fontSize={11}
-                tickLine={false}
-                axisLine={{ stroke: "#272B35" }}
-              />
-              <YAxis
-                stroke="#6B7280"
-                fontSize={11}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v)}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend
-                wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }}
-                iconType="circle"
-              />
+            <BarChart data={data} margin={MARGIN}>
+              <CartesianGrid {...GRID_PROPS} />
+              <XAxis dataKey={xKey} {...X_AXIS_PROPS} />
+              <YAxis {...Y_AXIS_PROPS} />
+              <Tooltip content={<ChartTooltip />} />
+              <Legend {...LEGEND_PROPS} />
               {dataKeys.map((dk, i) => (
                 <Bar
                   key={dk.key}
                   dataKey={dk.key}
                   name={dk.name || dk.key}
-                  fill={dk.color || PALETTE[i % PALETTE.length]}
-                  radius={[4, 4, 0, 0]}
-                  maxBarSize={48}
+                  fill={dk.color || COLORS[i % COLORS.length]}
+                  radius={[2, 2, 0, 0]}
+                  maxBarSize={40}
                 />
               ))}
             </BarChart>
@@ -488,292 +374,253 @@ function ChartCard({ chart, onExpand, isFullscreen = false }) {
   );
 }
 
-/* ─── Client-side CSV Exporter ─── */
-function exportPageToCsv(page, reportTitle) {
-  if (!page || !Array.isArray(page.charts) || page.charts.length === 0) return;
-
-  let csvContent = "";
-  csvContent += `Report,${JSON.stringify(reportTitle || "PowerBI Report")}\r\n`;
-  csvContent += `Page,${JSON.stringify(page.name || "Overview")}\r\n\r\n`;
-
-  // Append each chart's aggregated data
-  page.charts.forEach((chart, idx) => {
-    csvContent += `--- Chart ${idx + 1}: ${chart.title || "Visual"} ---\r\n`;
-    const xAxisKey = chart.xAxisKey || "name";
-    const dataKeys =
-      Array.isArray(chart.dataKeys) && chart.dataKeys.length > 0
-        ? chart.dataKeys
-        : [{ key: "value", name: "Value" }];
-
-    // Column Headers
-    const headers = [xAxisKey, ...dataKeys.map((dk) => dk.name || dk.key)];
-    csvContent += headers.map((h) => JSON.stringify(h)).join(",") + "\r\n";
-
-    // Rows
-    const rows = Array.isArray(chart.data) ? chart.data : [];
-    rows.forEach((row) => {
-      const line = [
-        row[xAxisKey],
-        ...dataKeys.map((dk) => (row[dk.key] !== undefined ? row[dk.key] : "")),
-      ];
-      csvContent +=
-        line.map((val) => JSON.stringify(val !== undefined ? val : "")).join(",") +
-        "\r\n";
-    });
-    csvContent += "\r\n";
-  });
-
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.setAttribute("href", url);
-  const safeName = (page.name || "report")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "_");
-  link.setAttribute("download", `${safeName}_data.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
-
-/* ─── Enlarged Lightbox Modal ─── */
+/* ─── Chart Expand Modal ─── */
 function ChartModal({ chart, onClose }) {
   if (!chart) return null;
-
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-6"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-4xl bg-[#10121A] border border-[#272B35] rounded-2xl p-6 shadow-2xl relative"
+        className="w-full max-w-4xl bg-[#12141A] rounded p-6 relative"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-1.5 rounded-lg bg-[#1E2230] text-[#9CA3AF] hover:text-[#F3F4F6] transition-colors"
+          className="absolute top-4 right-4 p-1 rounded text-[#6B7075] hover:text-[#D0D3D8] transition-colors"
         >
-          <X size={18} />
+          <X size={16} />
         </button>
-
-        <h3 className="text-[17px] font-semibold text-[#F3F4F6] mb-1">
+        <h3 className="text-[15px] font-semibold text-[#D0D3D8] mb-1">
           {chart.title}
         </h3>
         {chart.description && (
-          <p className="text-[13px] text-[#9CA3AF] mb-4">{chart.description}</p>
+          <p className="text-[12px] text-[#6B7075] mb-4">{chart.description}</p>
         )}
-
-        <div className="w-full h-[450px]">
-          <ChartCard chart={chart} isFullscreen={true} />
+        <div className="w-full">
+          <ChartCard chart={chart} expanded />
         </div>
       </div>
     </div>
   );
 }
 
-/* ─── Main Dynamic Multi-Page PowerBI Dashboard ─── */
+/* ─── CSV Export ─── */
+function exportPageToCsv(page, reportTitle) {
+  if (!page || !Array.isArray(page.charts) || page.charts.length === 0) return;
+
+  let csv = "";
+  csv += `Report,${JSON.stringify(reportTitle || "Report")}\r\n`;
+  csv += `Page,${JSON.stringify(page.name || "Overview")}\r\n\r\n`;
+
+  page.charts.forEach((chart, idx) => {
+    csv += `--- ${chart.title || `Chart ${idx + 1}`} ---\r\n`;
+    const xKey = chart.xAxisKey || "name";
+    const dks =
+      Array.isArray(chart.dataKeys) && chart.dataKeys.length > 0
+        ? chart.dataKeys
+        : [{ key: "value", name: "Value" }];
+
+    const headers = [xKey, ...dks.map((dk) => dk.name || dk.key)];
+    csv += headers.map((h) => JSON.stringify(h)).join(",") + "\r\n";
+
+    (Array.isArray(chart.data) ? chart.data : []).forEach((row) => {
+      const line = [
+        row[xKey],
+        ...dks.map((dk) => (row[dk.key] !== undefined ? row[dk.key] : "")),
+      ];
+      csv +=
+        line
+          .map((v) => JSON.stringify(v !== undefined ? v : ""))
+          .join(",") + "\r\n";
+    });
+    csv += "\r\n";
+  });
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const safeName = (page.name || "report")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "_");
+  a.download = `${safeName}_data.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   Main Dashboard Component
+   ════════════════════════════════════════════════════════════════ */
 export default function InteractiveDashboard({ spec }) {
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [modalChart, setModalChart] = useState(null);
 
-  // Close fullscreen on ESC key
   useEffect(() => {
-    const handleKeyDown = (e) => {
+    const onKey = (e) => {
       if (e.key === "Escape") {
         if (modalChart) setModalChart(null);
         else if (isFullscreen) setIsFullscreen(false);
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [modalChart, isFullscreen]);
 
   const report = normalizeDashboardSpec(spec);
   if (!report || report.pages.length === 0) return null;
 
   const pages = report.pages;
-  const activePage = pages[activePageIndex] || pages[0];
-  const kpis = activePage.kpis || [];
-  const charts = activePage.charts || [];
-  const insights = activePage.insights || [];
+  const page = pages[activePageIndex] || pages[0];
+  const kpis = page.kpis || [];
+  const charts = page.charts || [];
+  const insights = page.insights || [];
 
-  // Dynamic grid columns based on chart count
-  const chartGridCols =
-    charts.length === 1
-      ? "grid-cols-1"
-      : charts.length === 2
-      ? "grid-cols-1 lg:grid-cols-2"
-      : "grid-cols-1 md:grid-cols-2";
+  const gridCols =
+    charts.length === 1 ? "grid-cols-1" : "grid-cols-1 lg:grid-cols-2";
 
-  // Dashboard content renderer (shared between standard and fullscreen views)
-  const renderDashboardBody = (fullscreen = false) => (
-    <div className="space-y-4">
-      {/* ─── Top Control Header (PowerBI Style) ─── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between pb-3.5 border-b border-[#1E2230] gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase bg-blue-500/15 text-blue-400 border border-blue-500/30">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-              PowerBI Report View
-            </span>
-            <span className="text-xs text-[#6B7280]">
-              {pages.length} {pages.length === 1 ? "Page" : "Pages"} •{" "}
-              {charts.length} {charts.length === 1 ? "Visual" : "Visuals"}
-            </span>
-          </div>
-          <h3 className="text-[17px] font-bold text-[#F3F4F6] tracking-tight mt-1">
+  /* ─── Dashboard body (shared between inline and fullscreen) ─── */
+  const body = (fs = false) => (
+    <div>
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between mb-5 gap-4">
+        <div className="min-w-0">
+          <h3 className="text-[17px] font-semibold text-[#E0E2E6] tracking-tight leading-tight">
             {report.title}
           </h3>
-          {(report.subtitle || activePage.summary) && (
-            <p className="text-[12.5px] text-[#9CA3AF] mt-0.5">
-              {activePage.summary || report.subtitle}
+          {(page.summary || report.subtitle) && (
+            <p className="text-[12px] text-[#6B7075] mt-1 leading-normal">
+              {page.summary || report.subtitle}
             </p>
           )}
         </div>
-
-        {/* Action Controls */}
-        <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
+        <div className="flex items-center gap-4 shrink-0 pt-0.5">
           <button
-            onClick={() => exportPageToCsv(activePage, report.title)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#161922] hover:bg-[#1E2230] text-[#D1D5DB] border border-[#272B35] text-xs font-medium transition-colors"
-            title="Export this page's chart data to CSV"
+            onClick={() => exportPageToCsv(page, report.title)}
+            className="text-[11px] text-[#4A4E58] hover:text-[#8B8F98] transition-colors"
           >
-            <Download size={13} />
-            <span>Export CSV</span>
+            Export
           </button>
-
           <button
-            onClick={() => setIsFullscreen(!fullscreen)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/30 text-xs font-medium transition-colors"
-            title={fullscreen ? "Exit presentation mode" : "Open in full canvas mode"}
+            onClick={() => setIsFullscreen(!fs)}
+            className="text-[11px] text-[#4A4E58] hover:text-[#8B8F98] transition-colors flex items-center gap-1"
           >
-            {fullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-            <span>{fullscreen ? "Exit View" : "Full Canvas"}</span>
+            {fs ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+            <span>{fs ? "Close" : "Expand"}</span>
           </button>
         </div>
       </div>
 
-      {/* ─── Multi-Page Navigation Tab Bar ─── */}
+      {/* ── Page tabs ── */}
       {pages.length > 1 && (
-        <div className="flex items-center justify-between border-b border-[#1E2230] pb-2 pt-0.5 gap-2 flex-wrap">
-          {/* Tab buttons */}
-          <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none">
-            {pages.map((page, idx) => {
-              const isActive = idx === activePageIndex;
-              const IconComp = getPageIcon(page.icon);
-              return (
-                <button
-                  key={page.id || idx}
-                  onClick={() => setActivePageIndex(idx)}
-                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    isActive
-                      ? "bg-[#2563EB] text-white shadow-md shadow-blue-500/20 border border-blue-400/40"
-                      : "bg-[#151820] text-[#9CA3AF] hover:text-[#F3F4F6] hover:bg-[#1E2230] border border-[#272B35]"
-                  }`}
-                >
-                  <IconComp
-                    size={14}
-                    className={isActive ? "text-white" : "text-[#9CA3AF]"}
-                  />
-                  <span>{page.name}</span>
-                  {page.charts && page.charts.length > 0 && (
-                    <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                        isActive
-                          ? "bg-white/25 text-white"
-                          : "bg-[#272B35] text-[#9CA3AF]"
-                      }`}
-                    >
-                      {page.charts.length}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Page Counter & Arrows */}
-          <div className="flex items-center gap-2 text-xs text-[#9CA3AF] shrink-0">
-            <span className="font-mono text-[11px]">
-              Page {activePageIndex + 1} of {pages.length}
-            </span>
-            <div className="flex items-center gap-1">
+        <div className="flex items-center gap-5 border-b border-[#1E2128] mb-5 overflow-x-auto">
+          {pages.map((p, idx) => {
+            const active = idx === activePageIndex;
+            return (
               <button
-                onClick={() => setActivePageIndex((p) => Math.max(0, p - 1))}
-                disabled={activePageIndex === 0}
-                className="p-1 rounded bg-[#151820] border border-[#272B35] disabled:opacity-40 hover:bg-[#1E2230] text-[#D1D5DB]"
-                title="Previous page"
+                key={p.id || idx}
+                onClick={() => setActivePageIndex(idx)}
+                className={`pb-2.5 text-[12px] font-medium transition-colors whitespace-nowrap border-b-2 -mb-px ${
+                  active
+                    ? "text-[#D0D3D8] border-[#5B8DEF]"
+                    : "text-[#4A4E58] border-transparent hover:text-[#8B8F98]"
+                }`}
               >
-                <ChevronLeft size={13} />
+                {p.name}
               </button>
-              <button
-                onClick={() =>
-                  setActivePageIndex((p) => Math.min(pages.length - 1, p + 1))
-                }
-                disabled={activePageIndex === pages.length - 1}
-                className="p-1 rounded bg-[#151820] border border-[#272B35] disabled:opacity-40 hover:bg-[#1E2230] text-[#D1D5DB]"
-                title="Next page"
-              >
-                <ChevronRight size={13} />
-              </button>
-            </div>
-          </div>
+            );
+          })}
         </div>
       )}
 
-      {/* ─── Executive Insights & Key Takeaways Banner ─── */}
+      {/* ── KPIs ── */}
+      {kpis.length > 0 && (
+        <div
+          className={`grid gap-x-6 gap-y-4 mb-6 ${
+            kpis.length <= 2
+              ? "grid-cols-2"
+              : kpis.length === 3
+              ? "grid-cols-3"
+              : "grid-cols-2 sm:grid-cols-4"
+          }`}
+        >
+          {kpis.map((kpi, idx) => {
+            const isPos =
+              typeof kpi.change === "string" &&
+              kpi.change.trim().startsWith("+");
+            const isNeg =
+              typeof kpi.change === "string" &&
+              kpi.change.trim().startsWith("-");
+
+            return (
+              <div key={idx} className="min-w-0">
+                <div className="text-[10px] text-[#5A5E66] font-medium uppercase tracking-wider mb-1 truncate">
+                  {kpi.label}
+                </div>
+                <div className="text-[20px] font-semibold text-[#E0E2E6] tracking-tight font-mono leading-none">
+                  {typeof kpi.value === "number"
+                    ? kpi.value.toLocaleString()
+                    : kpi.value}
+                </div>
+                {kpi.change && (
+                  <div
+                    className={`text-[11px] mt-1.5 leading-tight ${
+                      isPos
+                        ? "text-[#3EBD93]"
+                        : isNeg
+                        ? "text-[#E06C75]"
+                        : "text-[#5A5E66]"
+                    }`}
+                  >
+                    {kpi.change}
+                    {kpi.description && (
+                      <span className="text-[#3E424B] ml-1.5">
+                        · {kpi.description}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Insights ── */}
       {insights.length > 0 && (
-        <div className="rounded-xl border border-amber-500/25 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="p-1 rounded bg-amber-500/20 text-amber-300">
-              <Sparkles size={14} />
-            </span>
-            <h4 className="text-[12.5px] font-bold text-amber-200 tracking-wider uppercase">
-              Executive Insights & Key Takeaways
-            </h4>
+        <div className="mb-6">
+          <div className="text-[10px] text-[#5A5E66] font-medium uppercase tracking-wider mb-2">
+            Key Insights
           </div>
-          <ul className="space-y-1.5 text-[12.5px] text-[#E5E7EB]">
+          <ul className="space-y-1 text-[12.5px] text-[#8B8F98] leading-relaxed">
             {insights.map((insight, idx) => (
-              <li key={idx} className="flex items-start gap-2.5">
-                <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                <span className="leading-relaxed">{insight}</span>
+              <li key={idx} className="flex items-start gap-2">
+                <span className="mt-[7px] w-1 h-1 rounded-full bg-[#4A4E58] shrink-0" />
+                <span>{insight}</span>
               </li>
             ))}
           </ul>
         </div>
       )}
 
-      {/* ─── KPI Scorecard Cards Grid ─── */}
-      {kpis.length > 0 && (
-        <div
-          className={`grid gap-3 ${
-            kpis.length === 1
-              ? "grid-cols-1"
-              : kpis.length === 2
-              ? "grid-cols-2"
-              : kpis.length === 3
-              ? "grid-cols-1 sm:grid-cols-3"
-              : "grid-cols-2 sm:grid-cols-4"
-          }`}
-        >
-          {kpis.map((kpi, idx) => (
-            <KpiCard key={idx} kpi={kpi} />
-          ))}
-        </div>
-      )}
-
-      {/* ─── Interactive Charts Grid ─── */}
+      {/* ── Charts ── */}
       {charts.length > 0 && (
-        <div className={`grid gap-4 ${chartGridCols}`}>
+        <div className={`grid gap-5 ${gridCols}`}>
           {charts.map((chart, idx) => (
-            <ChartCard
+            <div
               key={chart.id || idx}
-              chart={chart}
-              onExpand={setModalChart}
-              isFullscreen={fullscreen}
-            />
+              className="bg-[#12141A] rounded px-4 py-4"
+            >
+              <ChartCard
+                chart={chart}
+                onExpand={setModalChart}
+                expanded={fs}
+              />
+            </div>
           ))}
         </div>
       )}
@@ -782,28 +629,26 @@ export default function InteractiveDashboard({ spec }) {
 
   return (
     <>
-      {/* Standard In-Chat Dashboard Container */}
-      <div className="my-4 rounded-2xl border border-[#272B35] bg-[#0C0E14] p-5 shadow-xl space-y-4">
-        {renderDashboardBody(false)}
-      </div>
+      {/* Inline dashboard */}
+      <div className="my-5 pt-5 border-t border-[#1E2128]">{body(false)}</div>
 
-      {/* ─── Full-Screen Presentation Mode Overlay ─── */}
+      {/* Fullscreen overlay */}
       {isFullscreen && (
-        <div className="fixed inset-0 z-50 bg-[#080A10]/95 backdrop-blur-xl p-4 md:p-8 overflow-y-auto animate-in fade-in duration-200">
-          <div className="max-w-7xl mx-auto bg-[#0C0E14] border border-[#272B35] rounded-2xl p-6 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 bg-[#0A0C10] overflow-y-auto">
+          <div className="max-w-6xl mx-auto px-6 py-6 relative">
             <button
               onClick={() => setIsFullscreen(false)}
-              className="absolute top-5 right-5 p-2 rounded-lg bg-[#1E2230] text-[#9CA3AF] hover:text-[#F3F4F6] transition-colors"
-              title="Close full canvas mode (Esc)"
+              className="absolute top-6 right-6 p-1.5 rounded text-[#6B7075] hover:text-[#D0D3D8] transition-colors"
+              title="Close (Esc)"
             >
-              <X size={18} />
+              <X size={16} />
             </button>
-            {renderDashboardBody(true)}
+            {body(true)}
           </div>
         </div>
       )}
 
-      {/* ─── Single Chart Lightbox Zoom Modal ─── */}
+      {/* Chart expand modal */}
       {modalChart && (
         <ChartModal chart={modalChart} onClose={() => setModalChart(null)} />
       )}
