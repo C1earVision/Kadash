@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from DB.agent_visualizations import get_visualization
@@ -11,13 +11,15 @@ from Prompt.dashboardSysPrompt import DASHBOARD_SYSTEM_PROMPT
 from Prompt.analysisAgent import ANALYSIS_AGENT_SYSTEM_PROMPT
 from dotenv import load_dotenv
 from pydantic import BaseModel
+from typing import Optional, List
 import json
 import re
 import os
 import time
 from Utils.ModelLoader import is_rate_limit_error, extract_retry_delay
+from DB.DataSourceManager import data_source_manager
 load_dotenv()
-
+# AI Backend server entrypoint
 app = FastAPI()
 
 origins = [
@@ -42,10 +44,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class ConnectDbRequest(BaseModel):
+    connection_string: str
+    custom_name: Optional[str] = None
+
+
 class QueryRequest(BaseModel):
-    # userContext: str
     question: str
     admin: bool
+    source_id: Optional[str] = None
 
 def use_agent(messages, agent, max_retries=2):
     for attempt in range(max_retries):
@@ -251,31 +260,94 @@ async def get_visualization_image(visualization_id: str):
     return Response(content=image_bytes, media_type="image/png")
 
 
+# Data source registration and schema introspection endpoints
+@app.post("/data-sources/connect")
+async def connect_database(request: ConnectDbRequest):
+    try:
+        result = data_source_manager.register_database_connection(
+            request.connection_string, request.custom_name
+        )
+        return {"status": "ok", "data_source": result}
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"status": "error", "error": str(e)})
+
+
+@app.post("/data-sources/upload")
+async def upload_data_files(files: List[UploadFile] = File(...)):
+    try:
+        files_data = []
+        for file in files:
+            content = await file.read()
+            files_data.append({"filename": file.filename, "content": content})
+
+        result = data_source_manager.register_uploaded_files(files_data)
+        return {"status": "ok", "data_source": result}
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"status": "error", "error": str(e)})
+
+
+@app.get("/data-sources/active")
+async def get_active_data_sources():
+    sources_summary = []
+    for s_id, s in data_source_manager.sources.items():
+        sources_summary.append({
+            "source_id": s_id,
+            "name": s["name"],
+            "type": s["type"],
+            "tables": s["tables"],
+        })
+    default_db = data_source_manager.get_default_db()
+    if default_db:
+        sources_summary.insert(0, {
+            "source_id": "default",
+            "name": "Default Database",
+            "type": "database",
+            "tables": default_db.get_usable_table_names(),
+        })
+    return {"status": "ok", "data_sources": sources_summary}
+
+
+@app.get("/data-sources/{source_id}/schema")
+async def get_data_source_schema(source_id: str, limit: int = 15):
+    schema_info = data_source_manager.get_schema(source_id, limit=limit)
+    return {"status": "ok", "schema": schema_info}
+
+
+@app.get("/data-sources/{source_id}/tables/{table_name}")
+async def get_table_records(source_id: str, table_name: str, limit: int = 25):
+    records = data_source_manager.get_table_data(source_id, table_name, limit=limit)
+    return {"status": "ok", "table": table_name, "data": records}
+
+
 @app.options("/query")
 async def options_query():
     return JSONResponse(status_code=200, content={"status": "ok"})
 
+
 @app.post("/query")
-async def query_travel_agent(query:QueryRequest):
+async def query_travel_agent(query: QueryRequest):
     try:
+        # Resolve active dynamic data source
+        active_source = data_source_manager.get_source(query.source_id)
+        active_db = active_source["db"] if active_source else None
+
         graph = GeneralAgent(system_prompt=GENERAL_SYSTEM_PROMPT)
         general_agent = graph()
-        
-        print(query)
-        messages={
+
+        print(f"Query: {query.question} | Source: {active_source.get('name') if active_source else 'default'}")
+        messages = {
             "messages": [query.question]
-            }
+        }
         agent_choice = use_agent(messages, general_agent)
 
-        
         if agent_choice == "use_web_search_agent":
             print("Used web search agent")
             graph = SearchAgent(system_prompt=SEARCH_SYSTEM_PROMPT)
             search_agent = graph()
             final_answer = use_agent(messages, search_agent)
         elif agent_choice == "use_rag_agent":
-            print("Used Rag Agent")
-            graph = RagAgent(system_prompt=RAG_SYSTEM_PROMPT, model_provider='openai')
+            print(f"Used Rag Agent with active db: {active_source.get('name') if active_source else 'default'}")
+            graph = RagAgent(system_prompt=RAG_SYSTEM_PROMPT, model_provider='openai', db=active_db)
             rag_agent = graph()
             final_answer = use_agent(messages, rag_agent)
         elif agent_choice == 'use_crud_agent':
@@ -288,16 +360,21 @@ async def query_travel_agent(query:QueryRequest):
                 final_answer = "User has no access to this information"
         elif agent_choice == 'use_data_analysis_and_visualization_agent':
             if query.admin:
-                print("data analysis and visualization agent used")
-                graph = analysisAgent(system_prompt=ANALYSIS_AGENT_SYSTEM_PROMPT, model_provider="openai")
+                print(f"data analysis and visualization agent used with active db: {active_source.get('name') if active_source else 'default'}")
+                graph = analysisAgent(system_prompt=ANALYSIS_AGENT_SYSTEM_PROMPT, model_provider="openai", db=active_db)
                 analysis_agent = graph()
                 final_answer = use_agent(messages, analysis_agent)
             else:
                 final_answer = "User has no access to this information"
-        print(final_answer)
+
         print("FINAL ANSWER FROM AGENT:", repr(final_answer))
         answer_text, image_url, dashboard_data = parse_visualization_answer(final_answer)
-        payload = {"answer": answer_text, "agent": agent_choice}
+        payload = {
+            "answer": answer_text,
+            "agent": agent_choice,
+            "source_id": active_source["source_id"] if active_source else "default",
+            "source_name": active_source["name"] if active_source else "Default Database"
+        }
         if image_url:
             payload["image"] = image_url
         if dashboard_data:

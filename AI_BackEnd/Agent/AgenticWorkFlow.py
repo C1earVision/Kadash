@@ -1,3 +1,6 @@
+# Agentic Workflow Orchestration
+# Compiles specialized state graphs for routing, search, database RAG, and business intelligence analysis.
+
 from Utils.ModelLoader import modelLoader
 from langgraph.graph import StateGraph, MessagesState, END, START
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -5,8 +8,6 @@ from Tools.webSearch import webSearch
 from Tools.CRUD import databaseCrudOperations
 from Tools.runPython import runPython
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
-from langchain_openai import ChatOpenAI
-from langchain_community.agent_toolkits.sql.base import create_sql_agent
 from DB.connect import dataBaseConnection
 
 
@@ -54,10 +55,13 @@ class SearchAgent(GeneralAgent):
 
 
 class RagAgent(GeneralAgent):
-    def __init__(self, system_prompt, model_provider="groq"):
+    def __init__(self, system_prompt, model_provider="groq", db=None):
         super().__init__(system_prompt, model_provider)
-        self.dataBaseConnection = dataBaseConnection()
-        self.db = self.dataBaseConnection.connection()
+        if db is not None:
+            self.db = db
+        else:
+            self.dataBaseConnection = dataBaseConnection()
+            self.db = self.dataBaseConnection.connection()
         toolkit_llm = self.model_loader.get_primary_model()
         self.sqlToolKit = SQLDatabaseToolkit(db=self.db, llm=toolkit_llm)
         self.web_search = webSearch()
@@ -82,10 +86,13 @@ class CrudAgent(GeneralAgent):
 
 
 class analysisAgent(GeneralAgent):
-    def __init__(self, system_prompt, model_provider="groq"):
+    def __init__(self, system_prompt, model_provider="groq", db=None):
         super().__init__(system_prompt, model_provider)
-        self.dataBaseConnection = dataBaseConnection()
-        self.db = self.dataBaseConnection.connection()
+        if db is not None:
+            self.db = db
+        else:
+            self.dataBaseConnection = dataBaseConnection()
+            self.db = self.dataBaseConnection.connection()
         toolkit_llm = self.model_loader.get_primary_model()
         self.sqlToolKit = SQLDatabaseToolkit(db=self.db, llm=toolkit_llm)
         self.runPythonTools = runPython()

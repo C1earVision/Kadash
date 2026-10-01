@@ -19,12 +19,16 @@ import {
   ArrowRight,
   RotateCcw,
   LayoutDashboard,
-  AlertTriangle
+  AlertTriangle,
+  Database,
+  HardDrive
 } from "lucide-react";
 import { API_URL, AI_API_URL } from "../config/api";
 import { useNavigate } from "react-router-dom";
 import MarkdownContent, { ChartImage } from "../components/MarkdownContent";
 import InteractiveDashboard from "../components/InteractiveDashboard";
+import DataSourceModal from "../components/DataSourceModal";
+import DataExplorer from "../components/DataExplorer";
 
 /* ─── Client-side fallback: extract dashboard JSON from raw text ─── */
 function tryExtractDashboard(text) {
@@ -382,7 +386,7 @@ const PROMPT_SUGGESTIONS = [
 /* ════════════════════════════════════════════════════════════════
    ChatView — agent chat interface
    ════════════════════════════════════════════════════════════════ */
-function ChatView() {
+function ChatView({ activeSource, onOpenSourceModal }) {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -456,6 +460,7 @@ function ChatView() {
           JSON.parse(localStorage.getItem("messages")).join(" ") +
           ` token:${user.token}`,
         admin: user.user.AdminState,
+        source_id: activeSource?.source_id,
       };
       const res = await axios.post(`${AI_API_URL}/query`, payLoad);
 
@@ -464,6 +469,7 @@ function ChatView() {
         role: "AI_Message",
         content: res.data.answer,
         agent: res.data.agent,
+        source_name: res.data.source_name,
         ...(imageUrl ? { image: imageUrl } : {}),
         ...(res.data.dashboard ? { dashboard: res.data.dashboard } : {}),
       };
@@ -502,22 +508,32 @@ function ChatView() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* Top action bar when in conversation */}
-      {messages.length > 0 && (
-        <div className="flex items-center justify-between px-6 py-2.5 border-b border-[#1E2230] bg-[#0F1117]/60 backdrop-blur-sm">
-          <span className="text-[12.5px] font-medium text-[#9CA3AF]">
-            Conversation
-          </span>
+      {/* Top action bar showing active data source */}
+      <div className="flex items-center justify-between px-6 py-2.5 border-b border-[#1E2230] bg-[#0F1117]/80 backdrop-blur-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-[12px] text-[#6B7280]">Active Data:</span>
+          <button
+            onClick={onOpenSourceModal}
+            className="flex items-center gap-1.5 px-2.5 py-1 text-[12px] font-medium text-blue-400 bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20 rounded-md transition-colors cursor-pointer"
+            title="Click to connect another database or upload CSV/Excel files"
+          >
+            <Database size={13} />
+            <span>{activeSource?.name || "Default Database"}</span>
+            <span className="text-[10px] text-blue-400/70 ml-0.5">▾</span>
+          </button>
+        </div>
+
+        {messages.length > 0 && (
           <button
             onClick={handleResetChat}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-[12px] text-[#9CA3AF] hover:text-[#F3F4F6] hover:bg-[#1E2230] rounded-md transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-[12px] text-[#9CA3AF] hover:text-[#F3F4F6] hover:bg-[#1E2230] rounded-md transition-colors cursor-pointer"
             title="Start new conversation"
           >
             <RotateCcw size={13} />
             <span>New chat</span>
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Messages area */}
       <div
@@ -623,9 +639,17 @@ function ChatView() {
                                 />
                               )}
                               {msg.agent && (
-                                <p className="mt-1.5 text-[11px] text-[#6B7280]">
-                                  via {agentLabel(msg.agent)}
-                                </p>
+                                <div className="mt-1.5 flex items-center gap-2 text-[11px] text-[#6B7280]">
+                                  <span>via {agentLabel(msg.agent)}</span>
+                                  {msg.source_name && (
+                                    <>
+                                      <span>•</span>
+                                      <span className="text-[#9CA3AF] flex items-center gap-1">
+                                        <Database size={11} /> {msg.source_name}
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
                               )}
                             </>
                           );
@@ -687,7 +711,31 @@ function ChatView() {
    ════════════════════════════════════════════════════════════════ */
 export default function App() {
   const [page, setPage] = useState("agent");
+  const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
+  const [activeSource, setActiveSource] = useState(() => {
+    try {
+      return (
+        JSON.parse(localStorage.getItem("activeSource")) || {
+          source_id: "default",
+          name: "Default Database",
+          type: "database",
+        }
+      );
+    } catch {
+      return { source_id: "default", name: "Default Database", type: "database" };
+    }
+  });
+
   const navigate = useNavigate();
+
+  const handleSelectSource = (source) => {
+    setActiveSource(source);
+    try {
+      localStorage.setItem("activeSource", JSON.stringify(source));
+    } catch (e) {
+      console.error("Failed to save activeSource:", e);
+    }
+  };
 
   const user = (() => {
     try {
@@ -708,50 +756,80 @@ export default function App() {
   return (
     <div className="flex h-screen bg-[#0F1117] text-[#F3F4F6] overflow-hidden">
       {/* ─── Sidebar ─── */}
-      <aside className="w-56 flex flex-col border-r border-[#1E2230] bg-[#0F1117]">
+      <aside className="w-56 flex-shrink-0 flex flex-col border-r border-[#1E2230] bg-[#0F1117]">
         {/* Logo */}
-        <div className="px-5 py-5">
+        <div className="px-5 py-5 flex items-center justify-between">
           <span className="text-[17px] font-semibold tracking-tight text-[#F3F4F6]">
             Kadash
+          </span>
+          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+            BI
           </span>
         </div>
 
         {/* Nav */}
         <nav className="flex-1 px-3">
-          <div className="space-y-0.5">
+          <div className="space-y-1">
             <button
               onClick={() => setPage("agent")}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors ${page === "agent"
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors cursor-pointer ${
+                page === "agent"
                   ? "bg-[#2563EB]/10 text-[#3B82F6]"
                   : "text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820]"
-                }`}
+              }`}
             >
               <MessageSquare size={16} />
-              Agent
+              AI Agent
             </button>
             <button
-              onClick={() => setPage("dashboard")}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors ${page === "dashboard"
+              onClick={() => setPage("explorer")}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors cursor-pointer ${
+                page === "explorer"
                   ? "bg-[#2563EB]/10 text-[#3B82F6]"
                   : "text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820]"
-                }`}
+              }`}
             >
-              <Package size={16} />
-              Products
+              <Database size={16} />
+              Data Explorer
+            </button>
+            <button
+              onClick={() => setIsSourceModalOpen(true)}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820] transition-colors cursor-pointer"
+            >
+              <HardDrive size={16} />
+              Data Sources
             </button>
           </div>
         </nav>
 
+        {/* Active Source Footer Card */}
+        <div className="px-3 pb-3">
+          <div
+            onClick={() => setIsSourceModalOpen(true)}
+            className="p-2.5 rounded-lg bg-[#151820] border border-[#272B35] hover:border-blue-500/40 cursor-pointer transition-all"
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10.5px] font-medium text-[#6B7280] uppercase tracking-wider">
+                Connected Source
+              </span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            </div>
+            <p className="text-[12px] font-medium text-[#E5E7EB] truncate">
+              {activeSource?.name || "Default Database"}
+            </p>
+          </div>
+        </div>
+
         {/* Footer */}
-        <div className="px-3 pb-4 mt-auto">
+        <div className="px-3 pb-4 border-t border-[#1E2230] pt-3">
           {user && (
-            <div className="px-3 py-2 mb-2">
+            <div className="px-3 py-1.5 mb-1">
               <p className="text-[12px] text-[#6B7280] truncate">{user.Email}</p>
             </div>
           )}
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820] transition-colors"
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820] transition-colors cursor-pointer"
           >
             <LogOut size={16} />
             Sign out
@@ -760,9 +838,27 @@ export default function App() {
       </aside>
 
       {/* ─── Content ─── */}
-      <main className="flex-1 flex flex-col min-h-0 bg-[#0F1117]">
-        {page === "agent" ? <ChatView /> : <DashBoard />}
+      <main className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden bg-[#0F1117]">
+        {page === "agent" ? (
+          <ChatView
+            activeSource={activeSource}
+            onOpenSourceModal={() => setIsSourceModalOpen(true)}
+          />
+        ) : (
+          <DataExplorer
+            activeSource={activeSource}
+            onOpenSourceModal={() => setIsSourceModalOpen(true)}
+          />
+        )}
       </main>
+
+      {/* Data Source Connection & File Upload Modal */}
+      <DataSourceModal
+        isOpen={isSourceModalOpen}
+        onClose={() => setIsSourceModalOpen(false)}
+        activeSource={activeSource}
+        onSelectSource={handleSelectSource}
+      />
     </div>
   );
 }

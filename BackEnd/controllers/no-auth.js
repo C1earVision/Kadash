@@ -27,9 +27,9 @@ const getAllProducts = async (req, res) => {
         const processedProducts = result.rows.map(Product => {
           const images = Product.Images
             ? Product.Images.split(',').map((image) => {
-                const cleanImage = image.startsWith('0x') ? image.slice(2) : image;
-                return `data:image/png;base64,${Buffer.from(cleanImage, 'hex').toString('base64')}`;
-              })
+              const cleanImage = image.startsWith('0x') ? image.slice(2) : image;
+              return `data:image/png;base64,${Buffer.from(cleanImage, 'hex').toString('base64')}`;
+            })
             : [];
           return { ...Product, Images: images };
         });
@@ -87,9 +87,9 @@ const getAllProducts = async (req, res) => {
       const processedProducts = result.rows.map(Product => {
         const images = Product.Images
           ? Product.Images.split(',').map((image) => {
-              const cleanImage = image.startsWith('0x') ? image.slice(2) : image;
-              return `data:image/png;base64,${Buffer.from(cleanImage, 'hex').toString('base64')}`;
-            })
+            const cleanImage = image.startsWith('0x') ? image.slice(2) : image;
+            return `data:image/png;base64,${Buffer.from(cleanImage, 'hex').toString('base64')}`;
+          })
           : [];
         return { ...Product, Images: images };
       });
@@ -112,9 +112,9 @@ const getAllProducts = async (req, res) => {
       const processedProducts = result.rows.map(Product => {
         const images = Product.Images
           ? Product.Images.split(',').map((image) => {
-              const cleanImage = image.startsWith('0x') ? image.slice(2) : image;
-              return `data:image/png;base64,${Buffer.from(cleanImage, 'hex').toString('base64')}`;
-            })
+            const cleanImage = image.startsWith('0x') ? image.slice(2) : image;
+            return `data:image/png;base64,${Buffer.from(cleanImage, 'hex').toString('base64')}`;
+          })
           : [];
         return { ...Product, Images: images };
       });
@@ -151,10 +151,10 @@ const getProduct = async (req, res) => {
     const Product = result.rows[0];
     const imagesArray = Product.Images
       ? Product.Images.split(',').map(image => {
-          const cleanImage = image.startsWith('0x') ? image.slice(2) : image;
-          const base64Image = Buffer.from(cleanImage, 'hex').toString('base64');
-          return `data:image/png;base64,${base64Image}`;
-        })
+        const cleanImage = image.startsWith('0x') ? image.slice(2) : image;
+        const base64Image = Buffer.from(cleanImage, 'hex').toString('base64');
+        return `data:image/png;base64,${base64Image}`;
+      })
       : [];
 
     res.status(StatusCodes.OK).json({

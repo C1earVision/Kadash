@@ -21,18 +21,18 @@ body {
 
 /* ===== Scrollbar ===== */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(17, 19, 25, 0.5);
 }
 ::-webkit-scrollbar-thumb {
-  background: #272B35;
-  border-radius: 3px;
+  background: #2E3444;
+  border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3f4b;
+  background: #3B82F6;
 }
 
 /* Firefox */
