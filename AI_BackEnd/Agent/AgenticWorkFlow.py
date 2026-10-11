@@ -12,8 +12,8 @@ from DB.connect import dataBaseConnection
 
 
 class GeneralAgent:
-    def __init__(self, system_prompt, model_provider: str = "groq"):
-        self.model_loader = modelLoader(model_provider=model_provider)
+    def __init__(self, system_prompt, model_provider: str = "groq", model_id: str = None):
+        self.model_loader = modelLoader(model_provider=model_provider, model_id=model_id)
         self.llm = self.model_loader.load_llm()
         self.graph = None
         self.system_prompt = system_prompt
@@ -43,8 +43,8 @@ class GeneralAgent:
 
 
 class SearchAgent(GeneralAgent):
-    def __init__(self, system_prompt, model_provider="groq"):
-        super().__init__(system_prompt, model_provider)
+    def __init__(self, system_prompt, model_provider="groq", model_id=None):
+        super().__init__(system_prompt, model_provider, model_id=model_id)
         self.web_search = webSearch()
         self.tools = []
         self.tools.extend([*self.web_search.search_tool_list])
@@ -55,8 +55,8 @@ class SearchAgent(GeneralAgent):
 
 
 class RagAgent(GeneralAgent):
-    def __init__(self, system_prompt, model_provider="groq", db=None):
-        super().__init__(system_prompt, model_provider)
+    def __init__(self, system_prompt, model_provider="groq", db=None, model_id=None):
+        super().__init__(system_prompt, model_provider, model_id=model_id)
         if db is not None:
             self.db = db
         else:
@@ -74,8 +74,8 @@ class RagAgent(GeneralAgent):
 
 
 class CrudAgent(GeneralAgent):
-    def __init__(self, system_prompt, model_provider="groq"):
-        super().__init__(system_prompt, model_provider)
+    def __init__(self, system_prompt, model_provider="groq", model_id=None):
+        super().__init__(system_prompt, model_provider, model_id=model_id)
         self.databaseCrudOperations = databaseCrudOperations()
         self.tools = []
         self.tools.extend([*self.databaseCrudOperations.dataBaseCrudToolList])
@@ -86,8 +86,8 @@ class CrudAgent(GeneralAgent):
 
 
 class analysisAgent(GeneralAgent):
-    def __init__(self, system_prompt, model_provider="groq", db=None):
-        super().__init__(system_prompt, model_provider)
+    def __init__(self, system_prompt, model_provider="groq", db=None, model_id=None):
+        super().__init__(system_prompt, model_provider, model_id=model_id)
         if db is not None:
             self.db = db
         else:

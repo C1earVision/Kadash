@@ -1,16 +1,21 @@
 llm:
   models:
-    # 1. Primary: 120B parameter model (highest reasoning & complex SQL generation capability)
-    - provider: "groq"
-      model_name: "openai/gpt-oss-120b"
-      name: "GPT-OSS 120B (Groq)"
+    # 0. Default: Local Qwen 3.5 4B via Ollama (no API key needed, runs locally)
+    - provider: "ollama"
+      model_name: "qwen3.5:4b"
+      name: "Qwen 3.5 4B (Local)"
 
-    # 2. First Fallback: 27B parameter Qwen model (outstanding tool-calling & structured data)
+    # 1. Qwen 3.8 27B on Groq (excellent structured output & tool calling)
     - provider: "groq"
       model_name: "qwen/qwen3.8-27b"
       name: "Qwen 3.8 27B (Groq)"
 
-    # 3. Second Fallback: 20B parameter model (fast, efficient, separate rate limits)
+    # 2. First Fallback: GPT-OSS 120B (Verified available, high reasoning & SQL generation)
+    - provider: "groq"
+      model_name: "openai/gpt-oss-120b"
+      name: "GPT-OSS 120B (Groq)"
+
+    # 3. Second Fallback: GPT-OSS 20B (Verified available, fast fallback with separate rate limits)
     - provider: "groq"
       model_name: "openai/gpt-oss-20b"
       name: "GPT-OSS 20B (Groq)"

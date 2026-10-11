@@ -10,3 +10,6 @@ wheels/
 .venv
 .env
 ProjectNotes.txt
+
+# Session data (DuckDB uploaded files)
+storage/sessions/

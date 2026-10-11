@@ -16,7 +16,7 @@ import json
 import re
 import os
 import time
-from Utils.ModelLoader import is_rate_limit_error, extract_retry_delay
+from Utils.ModelLoader import is_rate_limit_error, extract_retry_delay, modelLoader
 from DB.DataSourceManager import data_source_manager
 load_dotenv()
 # AI Backend server entrypoint
@@ -55,6 +55,7 @@ class QueryRequest(BaseModel):
     question: str
     admin: bool
     source_id: Optional[str] = None
+    model_id: Optional[str] = None
 
 def use_agent(messages, agent, max_retries=2):
     for attempt in range(max_retries):
@@ -324,6 +325,12 @@ async def options_query():
     return JSONResponse(status_code=200, content={"status": "ok"})
 
 
+@app.get("/models")
+async def list_available_models():
+    """Return configured LLM models so the frontend can offer a selector."""
+    return {"status": "ok", "models": modelLoader.get_available_models()}
+
+
 @app.post("/query")
 async def query_travel_agent(query: QueryRequest):
     try:
@@ -331,10 +338,10 @@ async def query_travel_agent(query: QueryRequest):
         active_source = data_source_manager.get_source(query.source_id)
         active_db = active_source["db"] if active_source else None
 
-        graph = GeneralAgent(system_prompt=GENERAL_SYSTEM_PROMPT)
+        graph = GeneralAgent(system_prompt=GENERAL_SYSTEM_PROMPT, model_provider='groq', model_id=query.model_id)
         general_agent = graph()
 
-        print(f"Query: {query.question} | Source: {active_source.get('name') if active_source else 'default'}")
+        print(f"Query: {query.question} | Source: {active_source.get('name') if active_source else 'default'} | Model: {query.model_id or 'default'}")
         messages = {
             "messages": [query.question]
         }
@@ -342,18 +349,18 @@ async def query_travel_agent(query: QueryRequest):
 
         if agent_choice == "use_web_search_agent":
             print("Used web search agent")
-            graph = SearchAgent(system_prompt=SEARCH_SYSTEM_PROMPT)
+            graph = SearchAgent(system_prompt=SEARCH_SYSTEM_PROMPT, model_provider='groq', model_id=query.model_id)
             search_agent = graph()
             final_answer = use_agent(messages, search_agent)
         elif agent_choice == "use_rag_agent":
             print(f"Used Rag Agent with active db: {active_source.get('name') if active_source else 'default'}")
-            graph = RagAgent(system_prompt=RAG_SYSTEM_PROMPT, model_provider='openai', db=active_db)
+            graph = RagAgent(system_prompt=RAG_SYSTEM_PROMPT, model_provider='openai', db=active_db, model_id=query.model_id)
             rag_agent = graph()
             final_answer = use_agent(messages, rag_agent)
         elif agent_choice == 'use_crud_agent':
             if query.admin:
                 print("Used CRUD Agent")
-                graph = CrudAgent(system_prompt=DASHBOARD_SYSTEM_PROMPT, model_provider='openai')
+                graph = CrudAgent(system_prompt=DASHBOARD_SYSTEM_PROMPT, model_provider='openai', model_id=query.model_id)
                 crud_agent = graph()
                 final_answer = use_agent(messages, crud_agent)
             else:
@@ -361,7 +368,7 @@ async def query_travel_agent(query: QueryRequest):
         elif agent_choice == 'use_data_analysis_and_visualization_agent':
             if query.admin:
                 print(f"data analysis and visualization agent used with active db: {active_source.get('name') if active_source else 'default'}")
-                graph = analysisAgent(system_prompt=ANALYSIS_AGENT_SYSTEM_PROMPT, model_provider="openai", db=active_db)
+                graph = analysisAgent(system_prompt=ANALYSIS_AGENT_SYSTEM_PROMPT, model_provider="openai", db=active_db, model_id=query.model_id)
                 analysis_agent = graph()
                 final_answer = use_agent(messages, analysis_agent)
             else:

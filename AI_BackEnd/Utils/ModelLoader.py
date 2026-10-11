@@ -12,6 +12,28 @@ from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatResult
 
 
+def is_daily_limit_error(error: Exception) -> bool:
+    """
+    Detects whether an error indicates daily quota or day-limit exhaustion (TPD/RPD).
+    For daily limits, sleeping for seconds is useless; the model should fail immediately
+    so fallback models in the chain can take over seamlessly.
+    """
+    msg = str(error).lower()
+    return any(
+        sig in msg
+        for sig in [
+            "tokens per day",
+            "requests per day",
+            "tpd",
+            "rpd",
+            "day limit",
+            "daily limit",
+            "exceeded your current quota",
+            "quota exceeded",
+        ]
+    )
+
+
 def is_rate_limit_error(error: Exception) -> bool:
     """
     Detects whether an exception indicates a 429 or rate limit exceeded error.
@@ -131,6 +153,13 @@ class ResilientChatGroq(ChatGroq):
                     messages, stop=stop, run_manager=run_manager, **kwargs
                 )
             except Exception as e:
+                if is_daily_limit_error(e):
+                    print(
+                        f"[ResilientChatGroq] Daily quota reached on '{self.model_name}'. "
+                        f"Failing over immediately to fallback models..."
+                    )
+                    raise
+
                 if is_rate_limit_error(e) and attempt < self.max_rate_limit_retries:
                     attempt += 1
                     delay = extract_retry_delay(e, attempt)
@@ -156,6 +185,13 @@ class ResilientChatGroq(ChatGroq):
                     messages, stop=stop, run_manager=run_manager, **kwargs
                 )
             except Exception as e:
+                if is_daily_limit_error(e):
+                    print(
+                        f"[ResilientChatGroq] Daily quota reached on '{self.model_name}'. "
+                        f"Failing over immediately to fallback models..."
+                    )
+                    raise
+
                 if is_rate_limit_error(e) and attempt < self.max_rate_limit_retries:
                     attempt += 1
                     delay = extract_retry_delay(e, attempt)
@@ -189,6 +225,13 @@ class ResilientChatOpenAI(ChatOpenAI):
                     messages, stop=stop, run_manager=run_manager, **kwargs
                 )
             except Exception as e:
+                if is_daily_limit_error(e):
+                    print(
+                        f"[ResilientChatOpenAI] Daily quota reached on '{self.model_name}'. "
+                        f"Failing over immediately to fallback models..."
+                    )
+                    raise
+
                 if is_rate_limit_error(e) and attempt < self.max_rate_limit_retries:
                     attempt += 1
                     delay = extract_retry_delay(e, attempt)
@@ -214,6 +257,13 @@ class ResilientChatOpenAI(ChatOpenAI):
                     messages, stop=stop, run_manager=run_manager, **kwargs
                 )
             except Exception as e:
+                if is_daily_limit_error(e):
+                    print(
+                        f"[ResilientChatOpenAI] Daily quota reached on '{self.model_name}'. "
+                        f"Failing over immediately to fallback models..."
+                    )
+                    raise
+
                 if is_rate_limit_error(e) and attempt < self.max_rate_limit_retries:
                     attempt += 1
                     delay = extract_retry_delay(e, attempt)
@@ -227,9 +277,12 @@ class ResilientChatOpenAI(ChatOpenAI):
 
 
 class modelLoader:
-    def __init__(self, model_provider="groq"):
+    def __init__(self, model_provider="groq", model_id=None):
+        env_path = os.path.join(os.path.dirname(__file__), "../.env")
+        load_dotenv(env_path)
         load_dotenv()
         self.model_provider = model_provider
+        self.model_id = model_id
         self.config_path = os.path.join(
             os.path.dirname(__file__), "../Model/config.yaml"
         )
@@ -245,12 +298,42 @@ class modelLoader:
             print(f"Warning: Failed to load config.yaml: {e}")
         return []
 
+    @staticmethod
+    def _make_model_id(cfg):
+        """Generate a stable unique ID from a model config entry."""
+        return f"{cfg.get('provider', 'unknown')}:{cfg.get('model_name', 'unknown')}"
+
+    @classmethod
+    def get_available_models(cls):
+        """Return the list of all configured models with their IDs for the frontend."""
+        loader = cls()
+        models = []
+        for cfg in loader.models_config:
+            models.append({
+                "id": cls._make_model_id(cfg),
+                "provider": cfg.get("provider", "unknown"),
+                "model_name": cfg.get("model_name", "unknown"),
+                "name": cfg.get("name", cfg.get("model_name", "Unknown")),
+            })
+        return models
+
     def _create_model_instance(self, cfg):
         """Create a single chat model based on provider configuration with resilient rate-limit backoff."""
         provider = cfg.get("provider", "groq").lower()
         model_name = cfg.get("model_name")
 
-        if provider == "groq":
+        if provider == "ollama":
+            ollama_base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+            return ResilientChatOpenAI(
+                model=model_name,
+                base_url=ollama_base,
+                api_key="ollama",  # Ollama doesn't need a real key; OpenAI client requires a non-empty string
+                temperature=0.1,
+                max_retries=1,
+                max_tokens=32768,
+            )
+
+        elif provider == "groq":
             groq_key = os.getenv("GROQ_API_KEY")
             if not groq_key:
                 return None
@@ -258,7 +341,7 @@ class modelLoader:
                 model=model_name,
                 api_key=groq_key,
                 temperature=0.1,
-                max_tokens=12000,
+                max_tokens=6000,
                 max_retries=1,  # Transport retries; ResilientChatGroq handles smart rate-limit backoff sleeps
             )
 
@@ -271,10 +354,39 @@ class modelLoader:
                 api_key=openai_key,
                 temperature=0.1,
                 max_retries=1,
-                max_tokens=12000,
+                max_tokens=6000,
             )
 
         return None
+
+    def _resolve_model_configs(self):
+        """
+        Returns the list of model configs to use, respecting model_id selection.
+        If model_id is set, the selected model is placed first; all others become fallbacks.
+        """
+        all_configs = self.models_config or [
+            {"provider": "ollama", "model_name": "qwen3.5:4b"},
+            {"provider": "groq", "model_name": "qwen/qwen3.8-27b"},
+            {"provider": "groq", "model_name": "openai/gpt-oss-120b"},
+            {"provider": "groq", "model_name": "openai/gpt-oss-20b"},
+            {"provider": "openai", "model_name": "gpt-4o-mini"},
+        ]
+
+        if not self.model_id:
+            return all_configs
+
+        # Put the user-selected model first, then the rest as fallbacks
+        selected = None
+        rest = []
+        for cfg in all_configs:
+            if self._make_model_id(cfg) == self.model_id:
+                selected = cfg
+            else:
+                rest.append(cfg)
+
+        if selected:
+            return [selected] + rest
+        return all_configs
 
     def get_primary_model(self):
         """
@@ -282,11 +394,7 @@ class modelLoader:
         which expects a raw BaseLanguageModel instance, not a RunnableWithFallbacks).
         Equipped with ResilientChatGroq/ResilientChatOpenAI rate-limit retry logic.
         """
-        model_configs = self.models_config or [
-            {"provider": "groq", "model_name": "openai/gpt-oss-120b"},
-            {"provider": "groq", "model_name": "qwen/qwen3.8-27b"},
-            {"provider": "groq", "model_name": "openai/gpt-oss-20b"},
-        ]
+        model_configs = self._resolve_model_configs()
         for cfg in model_configs:
             inst = self._create_model_instance(cfg)
             if inst is not None:
@@ -299,12 +407,7 @@ class modelLoader:
         If tools are supplied, binds the tools to every model in the fallback chain.
         Each model instance has built-in smart sleep/backoff on rate limits.
         """
-        model_configs = self.models_config or [
-            {"provider": "groq", "model_name": "openai/gpt-oss-120b"},
-            {"provider": "groq", "model_name": "qwen/qwen3.8-27b"},
-            {"provider": "groq", "model_name": "openai/gpt-oss-20b"},
-            {"provider": "openai", "model_name": "gpt-4o-mini"},
-        ]
+        model_configs = self._resolve_model_configs()
 
         active_instances = []
         model_names_loaded = []

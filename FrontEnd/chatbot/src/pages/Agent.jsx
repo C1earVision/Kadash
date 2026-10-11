@@ -21,7 +21,11 @@ import {
   LayoutDashboard,
   AlertTriangle,
   Database,
-  HardDrive
+  HardDrive,
+  ChevronDown,
+  Zap,
+  Cloud,
+  Monitor
 } from "lucide-react";
 import { API_URL, AI_API_URL } from "../config/api";
 import { useNavigate } from "react-router-dom";
@@ -386,7 +390,7 @@ const PROMPT_SUGGESTIONS = [
 /* ════════════════════════════════════════════════════════════════
    ChatView — agent chat interface
    ════════════════════════════════════════════════════════════════ */
-function ChatView({ activeSource, onOpenSourceModal }) {
+function ChatView({ activeSource, onOpenSourceModal, selectedModel }) {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -420,6 +424,13 @@ function ChatView({ activeSource, onOpenSourceModal }) {
     return () => container.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // Reset textarea height whenever input is cleared
+  useEffect(() => {
+    if (!input && inputRef.current) {
+      inputRef.current.style.height = "auto";
+    }
+  }, [input]);
+
   const handleResetChat = () => {
     setMessages([]);
     localStorage.setItem("messages", JSON.stringify(["Context: "]));
@@ -441,6 +452,9 @@ function ChatView({ activeSource, onOpenSourceModal }) {
       { role: "AI_Message", content: "Searching...", isLoading: true },
     ]);
     setInput("");
+    if (inputRef.current) {
+      inputRef.current.style.height = "auto";
+    }
     setLoading(true);
     inputRef.current?.focus();
 
@@ -461,6 +475,7 @@ function ChatView({ activeSource, onOpenSourceModal }) {
           ` token:${user.token}`,
         admin: user.user.AdminState,
         source_id: activeSource?.source_id,
+        model_id: selectedModel || null,
       };
       const res = await axios.post(`${AI_API_URL}/query`, payLoad);
 
@@ -593,7 +608,7 @@ function ChatView({ activeSource, onOpenSourceModal }) {
                 {msg.role === "User_Message" ? (
                   /* User message */
                   <div className="flex justify-end">
-                    <div className="max-w-[75%] px-3.5 py-2.5 rounded-lg bg-[#1E2230] text-[14px] text-[#F3F4F6] leading-relaxed">
+                    <div className="max-w-[75%] px-3.5 py-2.5 rounded-lg bg-[#1E2230] text-[14px] text-[#F3F4F6] leading-relaxed whitespace-pre-wrap break-words font-sans">
                       {msg.content}
                     </div>
                   </div>
@@ -676,21 +691,29 @@ function ChatView({ activeSource, onOpenSourceModal }) {
 
       {/* Input area */}
       <div className="border-t border-[#1E2230] px-6 py-4">
-        <div className="max-w-3xl mx-auto flex items-center gap-2">
-          <input
+        <div className="max-w-3xl mx-auto flex items-end gap-2">
+          <textarea
             ref={inputRef}
-            type="text"
             placeholder="Ask anything about your business…"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              // Auto-resize: reset height then set to scrollHeight
+              e.target.style.height = "auto";
+              if (e.target.value) {
+                e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px";
+              }
+            }}
             onKeyDown={handleKeyPress}
             disabled={loading}
-            className="flex-1 px-3.5 py-2 text-[14px] text-[#F3F4F6] bg-[#151820] border border-[#272B35] rounded-md placeholder-[#4B5563] focus:outline-none focus:border-[#2563EB] disabled:opacity-50 transition-colors"
+            rows={1}
+            className="flex-1 px-3.5 py-2.5 text-[14px] text-[#F3F4F6] bg-[#151820] border border-[#272B35] rounded-lg placeholder-[#4B5563] focus:outline-none focus:border-[#2563EB] disabled:opacity-50 transition-colors resize-none leading-relaxed overflow-y-auto"
+            style={{ maxHeight: "200px" }}
           />
           <button
             onClick={() => sendMessage()}
             disabled={loading || !input.trim()}
-            className="flex items-center justify-center w-9 h-9 rounded-md bg-[#2563EB] text-white hover:bg-[#1D4ED8] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center justify-center w-9 h-9 flex-shrink-0 rounded-lg bg-[#2563EB] text-white hover:bg-[#1D4ED8] disabled:opacity-40 disabled:cursor-not-allowed transition-colors mb-[1px]"
             title="Send message"
           >
             {loading ? (
@@ -726,7 +749,57 @@ export default function App() {
     }
   });
 
+  // Model selection state
+  const [availableModels, setAvailableModels] = useState([]);
+  const [selectedModel, setSelectedModel] = useState(() => {
+    try {
+      return localStorage.getItem("selectedModel") || "";
+    } catch {
+      return "";
+    }
+  });
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
+  const modelDropdownRef = useRef(null);
+
   const navigate = useNavigate();
+
+  // Fetch available models on mount
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        const res = await axios.get(`${AI_API_URL}/models`);
+        if (res.data?.models) {
+          setAvailableModels(res.data.models);
+          // If no model is selected yet, default to the first one (Ollama local)
+          if (!selectedModel && res.data.models.length > 0) {
+            const defaultId = res.data.models[0].id;
+            setSelectedModel(defaultId);
+            localStorage.setItem("selectedModel", defaultId);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch available models:", err);
+      }
+    };
+    fetchModels();
+  }, []);
+
+  // Close model dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target)) {
+        setIsModelDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleModelSelect = (modelId) => {
+    setSelectedModel(modelId);
+    localStorage.setItem("selectedModel", modelId);
+    setIsModelDropdownOpen(false);
+  };
 
   const handleSelectSource = (source) => {
     setActiveSource(source);
@@ -800,6 +873,76 @@ export default function App() {
               Data Sources
             </button>
           </div>
+
+          {/* Model Selector */}
+          <div className="px-3 mt-4">
+            <div className="text-[10.5px] font-medium text-[#6B7280] uppercase tracking-wider px-3 mb-2">
+              AI Model
+            </div>
+            <div className="relative" ref={modelDropdownRef}>
+              <button
+                onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-[#151820] border border-[#272B35] hover:border-[#3B82F6]/40 text-[13px] text-[#E5E7EB] transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {(() => {
+                    const current = availableModels.find(m => m.id === selectedModel);
+                    const provider = current?.provider || "";
+                    return (
+                      <>
+                        <span className={`flex-shrink-0 w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold ${
+                          provider === "ollama"
+                            ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                            : provider === "groq"
+                              ? "bg-orange-500/15 text-orange-400 border border-orange-500/30"
+                              : "bg-violet-500/15 text-violet-400 border border-violet-500/30"
+                        }`}>
+                          {provider === "ollama" ? <Monitor size={11} /> : provider === "groq" ? <Zap size={11} /> : <Cloud size={11} />}
+                        </span>
+                        <span className="truncate">{current?.name || "Select Model"}</span>
+                      </>
+                    );
+                  })()}
+                </div>
+                <ChevronDown size={14} className={`flex-shrink-0 text-[#6B7280] transition-transform ${isModelDropdownOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {isModelDropdownOpen && (
+                <div className="absolute left-0 right-0 top-full mt-1 bg-[#151820] border border-[#272B35] rounded-lg shadow-xl shadow-black/40 z-50 overflow-hidden">
+                  {availableModels.map((model) => (
+                    <button
+                      key={model.id}
+                      onClick={() => handleModelSelect(model.id)}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-[13px] transition-colors cursor-pointer ${
+                        model.id === selectedModel
+                          ? "bg-[#2563EB]/10 text-blue-400"
+                          : "text-[#D1D5DB] hover:bg-[#1E2230] hover:text-[#F3F4F6]"
+                      }`}
+                    >
+                      <span className={`flex-shrink-0 w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold ${
+                        model.provider === "ollama"
+                          ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                          : model.provider === "groq"
+                            ? "bg-orange-500/15 text-orange-400 border border-orange-500/30"
+                            : "bg-violet-500/15 text-violet-400 border border-violet-500/30"
+                      }`}>
+                        {model.provider === "ollama" ? <Monitor size={11} /> : model.provider === "groq" ? <Zap size={11} /> : <Cloud size={11} />}
+                      </span>
+                      <div className="flex flex-col items-start min-w-0">
+                        <span className="truncate w-full">{model.name}</span>
+                        <span className="text-[10px] text-[#6B7280]">
+                          {model.provider === "ollama" ? "Local" : model.provider === "groq" ? "Groq Cloud" : "OpenAI"}
+                        </span>
+                      </div>
+                      {model.id === selectedModel && (
+                        <Check size={14} className="flex-shrink-0 ml-auto text-blue-400" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </nav>
 
         {/* Active Source Footer Card */}
@@ -843,6 +986,7 @@ export default function App() {
           <ChatView
             activeSource={activeSource}
             onOpenSourceModal={() => setIsSourceModalOpen(true)}
+            selectedModel={selectedModel}
           />
         ) : (
           <DataExplorer
