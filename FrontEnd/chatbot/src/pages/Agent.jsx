@@ -690,7 +690,7 @@ function ChatView({
               How can I assist your business today?
             </h1>
             <p className="text-[13.5px] text-[#9CA3AF] mt-1.5 mb-8 max-w-md">
-              Ask about inventory, hardware specs, sales figures, or request visual charts and tables.
+              Ask about inventory, best selling products, sales figures, or request visual charts and tables.
             </p>
 
             {/* Prompt Cards Grid */}
@@ -1060,8 +1060,8 @@ export default function App() {
             <button
               onClick={() => setPage("agent")}
               className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-[13px] font-medium transition-colors cursor-pointer ${page === "agent" && !currentChatId
-                  ? "bg-[#2563EB]/10 text-[#3B82F6]"
-                  : "text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820]"
+                ? "bg-[#2563EB]/10 text-[#3B82F6]"
+                : "text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820]"
                 }`}
             >
               <MessageSquare size={15} />
@@ -1071,8 +1071,8 @@ export default function App() {
             <button
               onClick={() => setPage("explorer")}
               className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-[13px] font-medium transition-colors cursor-pointer ${page === "explorer"
-                  ? "bg-[#2563EB]/10 text-[#3B82F6]"
-                  : "text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820]"
+                ? "bg-[#2563EB]/10 text-[#3B82F6]"
+                : "text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820]"
                 }`}
             >
               <Database size={15} />
@@ -1159,8 +1159,8 @@ export default function App() {
                         key={model.id}
                         onClick={() => handleModelSelect(model.id)}
                         className={`w-full flex items-center gap-2 px-3 py-2 text-[12.5px] transition-colors cursor-pointer ${model.id === selectedModel
-                            ? "bg-[#2563EB]/10 text-blue-400"
-                            : "text-[#D1D5DB] hover:bg-[#1E2230] hover:text-[#F3F4F6]"
+                          ? "bg-[#2563EB]/10 text-blue-400"
+                          : "text-[#D1D5DB] hover:bg-[#1E2230] hover:text-[#F3F4F6]"
                           }`}
                       >
                         <span className={`flex-shrink-0 w-4.5 h-4.5 rounded flex items-center justify-center text-[9px] font-bold ${mBadgeClass}`}>
@@ -1205,8 +1205,8 @@ export default function App() {
                       key={chat.id}
                       onClick={() => handleSelectChat(chat)}
                       className={`group flex items-center justify-between px-2.5 py-2 rounded-lg text-[13px] transition-all cursor-pointer ${isActive
-                          ? "bg-blue-600/15 text-blue-400 font-medium"
-                          : "text-[#9CA3AF] hover:text-[#F3F4F6] hover:bg-[#151820]"
+                        ? "bg-blue-600/15 text-blue-400 font-medium"
+                        : "text-[#9CA3AF] hover:text-[#F3F4F6] hover:bg-[#151820]"
                         }`}
                       title={chat.title}
                     >
