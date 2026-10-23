@@ -134,7 +134,7 @@ export default function RecentChatsView({
                 No conversation history yet
               </h3>
               <p className="text-[13px] text-[#9CA3AF] max-w-sm mb-6">
-                When you ask questions or analyze data with Kadash AI Agent, your 10 most recent sessions will be stored here.
+                When you ask questions or analyze data with Veyra AI Agent, your 10 most recent sessions will be stored here.
               </p>
               <button
                 onClick={onNewChat}

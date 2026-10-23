@@ -37,7 +37,7 @@ const Login = () => {
         {/* Brand */}
         <div className="mb-10">
           <h1 className="text-[22px] font-semibold text-[#F3F4F6] tracking-tight">
-            Kadash
+            Veyra
           </h1>
           <p className="mt-1 text-[13px] text-[#9CA3AF]">
             Sign in to your account

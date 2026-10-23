@@ -54,13 +54,14 @@ Using the real data above, create a complete dashboard specification:
   * NEVER use `product_id`, `customer_id`, `order_id`, or any column containing UUIDs/hashes as `xAxisKey`!
   * If a query returns both an ID column and a name/category column, ALWAYS select the name/category column for `xAxisKey`.
   * If a query only has an ID column and a metric (e.g. `product_id` and `order_count`), create a readable alias key in `data` like `"Top 1"`, `"Top 2"` or `"Product #" + product_id[:6]` and use that as `xAxisKey`. NEVER display raw 32-character hashes to the user!
-- `dataKeys`: Array of {{key, name, color}} for Y-axis values. Use professional hex colors:
-  * Blues: #3B82F6, #60A5FA, #2563EB
-  * Greens: #10B981, #34D399, #059669
-  * Purples: #8B5CF6, #A78BFA, #7C3AED
-  * Ambers: #F59E0B, #FBBF24, #D97706
-  * Reds: #EF4444, #F87171
-  * Teals: #14B8A6, #2DD4BF
+- `dataKeys`: Array of {{key, name, color}} for Y-axis values. Use refined enterprise hex colors:
+  * Blues (primary): #3B82F6, #60A5FA, #2563EB
+  * Emeralds / Greens (secondary/positive): #10B981, #34D399, #059669
+  * Ambers / Oranges (comparisons): #F59E0B, #FBBF24, #D97706
+  * Slate Indigos: #6366F1, #818CF8
+  * Cyans / Teals: #06B6D4, #14B8A6
+  * Reds / Corals (alerts/negative): #EF4444, #F87171
+  * Avoid purple gradients or neon AI aesthetics; keep colors disciplined and distinct.
 - `data`: The actual rows from the query results. Use the data EXACTLY as provided — NEVER fabricate or modify numbers.
 - For KPIs:
   * `label`: Short, professional metric title (e.g. "Total Orders", "Top Product Volume", "Revenue").

@@ -22,7 +22,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Sliders,
-  Image as ImageIcon
+  Image as ImageIcon,
+  PanelLeftClose,
+  PanelLeftOpen
 } from "lucide-react";
 import { AI_API_URL } from "../config/api";
 
@@ -50,7 +52,12 @@ function normalizeImgSrc(val) {
   return trimmed;
 }
 
-export default function DataExplorer({ activeSource, onOpenSourceModal }) {
+export default function DataExplorer({
+  activeSource,
+  onOpenSourceModal,
+  isSidebarOpen,
+  onToggleSidebar,
+}) {
   const [schemaData, setSchemaData] = useState({ tables: [], previews: {}, columns: {} });
   const [selectedTable, setSelectedTable] = useState("");
   const [rowLimit, setRowLimit] = useState(25);
@@ -237,16 +244,31 @@ export default function DataExplorer({ activeSource, onOpenSourceModal }) {
     <div className="flex-1 flex flex-col min-h-0 min-w-0 w-full overflow-hidden p-6 bg-[#0F1117]">
       {/* Top Banner */}
       <div className="flex-shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-[18px] font-semibold text-[#F3F4F6]">Data Explorer</h2>
-            <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
-              {activeSource?.name || "Default Database"}
-            </span>
+        <div className="flex items-center gap-3">
+          {onToggleSidebar && (
+            <button
+              onClick={onToggleSidebar}
+              className="p-1.5 rounded-lg text-[#9CA3AF] hover:text-[#F3F4F6] hover:bg-[#151820] border border-[#272B35] transition-colors cursor-pointer shrink-0"
+              title={isSidebarOpen ? "Collapse sidebar" : "Open sidebar"}
+            >
+              {isSidebarOpen ? (
+                <PanelLeftClose size={16} />
+              ) : (
+                <PanelLeftOpen size={16} className="text-blue-400" />
+              )}
+            </button>
+          )}
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-[18px] font-semibold text-[#F3F4F6]">Data Explorer</h2>
+              <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                {activeSource?.name || "Default Database"}
+              </span>
+            </div>
+            <p className="text-[13px] text-[#6B7280] mt-0.5">
+              Explore discovered tables, schema definitions, image records, and sample data.
+            </p>
           </div>
-          <p className="text-[13px] text-[#6B7280] mt-0.5">
-            Explore discovered tables, schema definitions, image records, and sample data.
-          </p>
         </div>
 
         <div className="flex items-center gap-2.5">

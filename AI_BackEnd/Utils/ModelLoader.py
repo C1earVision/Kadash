@@ -418,10 +418,10 @@ class modelLoader:
     def _stream_chunk_timeout(provider: str) -> Optional[float]:
         """
         LangChain ChatOpenAI defaults to 120s between stream chunks; local Ollama
-        models often pause longer while reasoning. Set KADASH_STREAM_CHUNK_TIMEOUT_S
+        models often pause longer while reasoning. Set Veyra_STREAM_CHUNK_TIMEOUT_S
         (seconds) to override, or 0/none/off to disable.
         """
-        raw = os.getenv("KADASH_STREAM_CHUNK_TIMEOUT_S", "").strip()
+        raw = os.getenv("Veyra_STREAM_CHUNK_TIMEOUT_S", "").strip()
         if raw:
             if raw.lower() in ("0", "none", "off", "disable", "false"):
                 return None

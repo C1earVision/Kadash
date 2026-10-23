@@ -28,7 +28,9 @@ import {
   Cloud,
   Monitor,
   History,
-  Plus
+  Plus,
+  PanelLeftClose,
+  PanelLeftOpen
 } from "lucide-react";
 import { API_URL, AI_API_URL } from "../config/api";
 import { useNavigate } from "react-router-dom";
@@ -348,6 +350,8 @@ function ChatView({
   setCurrentChatId,
   onSaveChatSession,
   onNewChat,
+  isSidebarOpen,
+  onToggleSidebar,
 }) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -494,10 +498,10 @@ function ChatView({
               prev.map((msg) =>
                 msg.isLoading
                   ? {
-                      ...msg,
-                      thinking: streamThinking,
-                      streamStatus: data.phase === "router" ? "Routing…" : streamStatus,
-                    }
+                    ...msg,
+                    thinking: streamThinking,
+                    streamStatus: data.phase === "router" ? "Routing…" : streamStatus,
+                  }
                   : msg
               )
             );
@@ -507,10 +511,10 @@ function ChatView({
               prev.map((msg) =>
                 msg.isLoading
                   ? {
-                      ...msg,
-                      steps: streamSteps,
-                      streamStatus: `${data.step.label}…`,
-                    }
+                    ...msg,
+                    steps: streamSteps,
+                    streamStatus: `${data.step.label}…`,
+                  }
                   : msg
               )
             );
@@ -627,8 +631,24 @@ function ChatView({
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Top action bar showing active data source */}
-      <div className="flex items-center justify-between px-6 py-2.5 border-b border-[#1E2230] bg-[#0F1117]/80 backdrop-blur-sm">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between px-4 sm:px-6 py-2.5 border-b border-[#1E2230] bg-[#0F1117]/80 backdrop-blur-sm">
+        <div className="flex items-center gap-2.5">
+          {onToggleSidebar && (
+            <>
+              <button
+                onClick={onToggleSidebar}
+                className="p-1.5 rounded-lg text-[#9CA3AF] hover:text-[#F3F4F6] hover:bg-[#1E2230] transition-colors cursor-pointer"
+                title={isSidebarOpen ? "Collapse sidebar" : "Open sidebar"}
+              >
+                {isSidebarOpen ? (
+                  <PanelLeftClose size={16} />
+                ) : (
+                  <PanelLeftOpen size={16} className="text-blue-400" />
+                )}
+              </button>
+              <span className="h-4 w-[1px] bg-[#1E2230]" />
+            </>
+          )}
           <span className="text-[12px] text-[#6B7280]">Active Data:</span>
           <button
             onClick={onOpenSourceModal}
@@ -656,11 +676,11 @@ function ChatView({
       {/* Messages area */}
       <div
         ref={chatContainerRef}
-        className="flex-1 overflow-y-auto px-6 py-6 relative"
+        className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 relative"
       >
         {messages.length === 0 ? (
           /* Empty state: Hero + Prompt suggestion cards */
-          <div className="flex flex-col items-center justify-center min-h-[65vh] max-w-2xl mx-auto px-4 text-center my-auto">
+          <div className="flex flex-col items-center justify-center min-h-[65vh] max-w-3xl mx-auto px-4 text-center my-auto">
             {/* Hero Icon */}
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600/20 to-indigo-500/10 border border-blue-500/30 flex items-center justify-center mb-4 text-[#3B82F6] shadow-sm">
               <Sparkles size={22} />
@@ -693,7 +713,7 @@ function ChatView({
                     </div>
                     <ArrowRight
                       size={14}
-                      className="text-[#6B7280] opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all"
+                      className="text-[#6B7075] opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all"
                     />
                   </div>
                   <p className="text-[12.5px] text-[#9CA3AF] group-hover:text-[#D1D5DB] transition-colors leading-snug">
@@ -705,20 +725,20 @@ function ChatView({
           </div>
         ) : (
           /* Active conversation transcript */
-          <div className="max-w-3xl mx-auto space-y-5">
+          <div className="w-full max-w-5xl mx-auto space-y-6">
             {messages.map((msg, i) => (
               <div key={i}>
                 {msg.role === "User_Message" ? (
                   /* User message */
                   <div className="flex justify-end">
-                    <div className="max-w-[75%] px-3.5 py-2.5 rounded-lg bg-[#1E2230] text-[14px] text-[#F3F4F6] leading-relaxed whitespace-pre-wrap break-words font-sans">
+                    <div className="max-w-[80%] sm:max-w-[70%] px-4 py-2.5 rounded-lg bg-[#1E2230] text-[14px] text-[#F3F4F6] leading-relaxed whitespace-pre-wrap break-words font-sans">
                       {msg.content}
                     </div>
                   </div>
                 ) : (
                   /* AI message */
                   <div className="flex justify-start">
-                    <div className="w-full max-w-[95%]">
+                    <div className="w-full">
                       {msg.isLoading ? (
                         <AgentThinking
                           thinking={msg.thinking}
@@ -727,42 +747,42 @@ function ChatView({
                           statusText={msg.streamStatus || "Thinking…"}
                         />
                       ) : (() => {
-                          const dashboardSpec = msg.dashboard || null;
-                          const displayContent = msg.content;
-                          return (
-                            <>
-                              <AgentThinking
-                                thinking={msg.thinking}
-                                steps={msg.steps}
+                        const dashboardSpec = msg.dashboard || null;
+                        const displayContent = msg.content;
+                        return (
+                          <>
+                            <AgentThinking
+                              thinking={msg.thinking}
+                              steps={msg.steps}
+                            />
+                            {displayContent && (
+                              <MarkdownContent content={displayContent} />
+                            )}
+                            {dashboardSpec && (
+                              <InteractiveDashboard spec={dashboardSpec} />
+                            )}
+                            {msg.image && (
+                              <ChartImage
+                                src={msg.image}
+                                alt="Generated visualization"
                               />
-                              {displayContent && (
-                                <MarkdownContent content={displayContent} />
-                              )}
-                              {dashboardSpec && (
-                                <InteractiveDashboard spec={dashboardSpec} />
-                              )}
-                              {msg.image && (
-                                <ChartImage
-                                  src={msg.image}
-                                  alt="Generated visualization"
-                                />
-                              )}
-                              {msg.agent && (
-                                <div className="mt-1.5 flex items-center gap-2 text-[11px] text-[#6B7280]">
-                                  <span>via {agentLabel(msg.agent)}</span>
-                                  {msg.source_name && (
-                                    <>
-                                      <span>•</span>
-                                      <span className="text-[#9CA3AF] flex items-center gap-1">
-                                        <Database size={11} /> {msg.source_name}
-                                      </span>
-                                    </>
-                                  )}
-                                </div>
-                              )}
-                            </>
-                          );
-                        })()}
+                            )}
+                            {msg.agent && (
+                              <div className="mt-1.5 flex items-center gap-2 text-[11px] text-[#6B7280]">
+                                <span>via {agentLabel(msg.agent)}</span>
+                                {msg.source_name && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="text-[#9CA3AF] flex items-center gap-1">
+                                      <Database size={11} /> {msg.source_name}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 )}
@@ -784,8 +804,8 @@ function ChatView({
       </div>
 
       {/* Input area */}
-      <div className="border-t border-[#1E2230] px-6 py-4">
-        <div className="max-w-3xl mx-auto flex items-end gap-2">
+      <div className="border-t border-[#1E2230] px-4 sm:px-6 py-4">
+        <div className="w-full max-w-5xl mx-auto flex items-end gap-2.5">
           <textarea
             ref={inputRef}
             placeholder="Ask anything about your business…"
@@ -832,6 +852,26 @@ export default function App() {
   const [messages, setMessages] = useState([]);
   const [currentChatId, setCurrentChatId] = useState(null);
   const [recentChats, setRecentChats] = useState(() => getRecentChats());
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    try {
+      const stored = localStorage.getItem("sidebarOpen");
+      return stored !== "false";
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleSidebar = () => {
+    setIsSidebarOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("sidebarOpen", String(next));
+      } catch (e) {
+        console.error("Failed to persist sidebarOpen:", e);
+      }
+      return next;
+    });
+  };
 
   const [activeSource, setActiveSource] = useState(() => {
     try {
@@ -976,249 +1016,258 @@ export default function App() {
   return (
     <div className="flex h-screen bg-[#0F1117] text-[#F3F4F6] overflow-hidden">
       {/* ─── Sidebar (ChatGPT / Claude style) ─── */}
-      <aside className="w-64 flex-shrink-0 flex flex-col h-full border-r border-[#1E2230] bg-[#0F1117]">
-        {/* Header: Logo + New Chat */}
-        <div className="p-3 border-b border-[#1E2230]/60 space-y-2.5 flex-shrink-0">
-          <div className="flex items-center justify-between px-1">
-            <span className="text-[16px] font-semibold tracking-tight text-[#F3F4F6]">
-              Kadash
-            </span>
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-              BI
-            </span>
-          </div>
-
-          <button
-            onClick={handleNewChat}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-[#151820] hover:bg-[#1C202C] border border-[#272B35] hover:border-blue-500/40 text-[13px] font-medium text-[#F3F4F6] transition-all cursor-pointer group shadow-sm"
-          >
-            <div className="flex items-center gap-2">
-              <Plus size={15} className="text-blue-400 group-hover:scale-110 transition-transform" />
-              <span>New Chat</span>
-            </div>
-            <span className="text-[10px] text-[#6B7280] font-mono border border-[#272B35] rounded px-1.5 py-0.5">
-              +
-            </span>
-          </button>
-        </div>
-
-        {/* Navigation & Tools */}
-        <div className="px-3 py-2 border-b border-[#1E2230]/60 space-y-1 flex-shrink-0">
-          <button
-            onClick={() => setPage("agent")}
-            className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-[13px] font-medium transition-colors cursor-pointer ${
-              page === "agent" && !currentChatId
-                ? "bg-[#2563EB]/10 text-[#3B82F6]"
-                : "text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820]"
-            }`}
-          >
-            <MessageSquare size={15} />
-            <span>AI Agent</span>
-          </button>
-
-          <button
-            onClick={() => setPage("explorer")}
-            className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-[13px] font-medium transition-colors cursor-pointer ${
-              page === "explorer"
-                ? "bg-[#2563EB]/10 text-[#3B82F6]"
-                : "text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820]"
-            }`}
-          >
-            <Database size={15} />
-            <span>Data Explorer</span>
-          </button>
-
-          <button
-            onClick={() => setIsSourceModalOpen(true)}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-[13px] font-medium text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820] transition-colors cursor-pointer"
-          >
-            <HardDrive size={15} />
-            <span>Data Sources</span>
-          </button>
-        </div>
-
-        {/* AI Model Selector */}
-        <div className="px-3 py-2.5 border-b border-[#1E2230]/60 flex-shrink-0">
-          <div className="text-[10px] font-medium text-[#6B7280] uppercase tracking-wider px-1 mb-1.5">
-            AI Model
-          </div>
-          <div className="relative" ref={modelDropdownRef}>
-            <button
-              onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
-              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-[#151820] border border-[#272B35] hover:border-[#3B82F6]/40 text-[12.5px] text-[#E5E7EB] transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                {(() => {
-                  const current = availableModels.find(m => m.id === selectedModel);
-                  const provider = current?.provider || "";
-                  const badgeClass =
-                    provider === "ollama"
-                      ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                      : provider === "groq"
-                        ? "bg-orange-500/15 text-orange-400 border border-orange-500/30"
-                        : provider === "gemini" || provider === "google"
-                          ? "bg-sky-500/15 text-sky-400 border border-sky-500/30"
-                          : "bg-violet-500/15 text-violet-400 border border-violet-500/30";
-                  const badgeIcon =
-                    provider === "ollama" ? (
-                      <Monitor size={10} />
-                    ) : provider === "groq" ? (
-                      <Zap size={10} />
-                    ) : provider === "gemini" || provider === "google" ? (
-                      <Sparkles size={10} />
-                    ) : (
-                      <Cloud size={10} />
-                    );
-                  return (
-                    <>
-                      <span className={`flex-shrink-0 w-4.5 h-4.5 rounded flex items-center justify-center text-[9px] font-bold ${badgeClass}`}>
-                        {badgeIcon}
-                      </span>
-                      <span className="truncate">{current?.name || "Select Model"}</span>
-                    </>
-                  );
-                })()}
+      <aside
+        className={`flex-shrink-0 flex flex-col h-full bg-[#0F1117] transition-[width,border-color] duration-200 ease-in-out overflow-hidden z-20 ${isSidebarOpen ? "w-64 border-r border-[#1E2230]" : "w-0 border-r-0"
+          }`}
+      >
+        <div className="w-64 flex flex-col h-full min-h-0 flex-shrink-0">
+          {/* Header: Logo + Collapse Button + New Chat */}
+          <div className="p-3 border-b border-[#1E2230]/60 space-y-2.5 flex-shrink-0">
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[16px] font-semibold tracking-tight text-[#F3F4F6]">
+                  Veyra
+                </span>
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                  BI
+                </span>
               </div>
-              <ChevronDown size={13} className={`flex-shrink-0 text-[#6B7280] transition-transform ${isModelDropdownOpen ? "rotate-180" : ""}`} />
+              <button
+                onClick={toggleSidebar}
+                className="p-1.5 rounded-lg text-[#9CA3AF] hover:text-[#F3F4F6] hover:bg-[#1E2230] transition-colors cursor-pointer"
+                title="Collapse sidebar"
+              >
+                <PanelLeftClose size={16} />
+              </button>
+            </div>
+
+            <button
+              onClick={handleNewChat}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-[#151820] hover:bg-[#1C202C] border border-[#272B35] hover:border-blue-500/40 text-[13px] font-medium text-[#F3F4F6] transition-all cursor-pointer group shadow-sm"
+            >
+              <div className="flex items-center gap-2">
+                <Plus size={15} className="text-blue-400 group-hover:scale-110 transition-transform" />
+                <span>New Chat</span>
+              </div>
+              <span className="text-[10px] text-[#6B7280] font-mono border border-[#272B35] rounded px-1.5 py-0.5">
+                +
+              </span>
+            </button>
+          </div>
+
+          {/* Navigation & Tools */}
+          <div className="px-3 py-2 border-b border-[#1E2230]/60 space-y-1 flex-shrink-0">
+            <button
+              onClick={() => setPage("agent")}
+              className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-[13px] font-medium transition-colors cursor-pointer ${page === "agent" && !currentChatId
+                  ? "bg-[#2563EB]/10 text-[#3B82F6]"
+                  : "text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820]"
+                }`}
+            >
+              <MessageSquare size={15} />
+              <span>AI Agent</span>
             </button>
 
-            {isModelDropdownOpen && (
-              <div className="absolute left-0 right-0 top-full mt-1 bg-[#151820] border border-[#272B35] rounded-lg shadow-xl shadow-black/40 z-50 overflow-hidden">
-                {availableModels.map((model) => {
-                  const mBadgeClass =
-                    model.provider === "ollama"
-                      ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                      : model.provider === "groq"
-                        ? "bg-orange-500/15 text-orange-400 border border-orange-500/30"
-                        : model.provider === "gemini" || model.provider === "google"
-                          ? "bg-sky-500/15 text-sky-400 border border-sky-500/30"
-                          : "bg-violet-500/15 text-violet-400 border border-violet-500/30";
-                  const mBadgeIcon =
-                    model.provider === "ollama" ? (
-                      <Monitor size={10} />
-                    ) : model.provider === "groq" ? (
-                      <Zap size={10} />
-                    ) : model.provider === "gemini" || model.provider === "google" ? (
-                      <Sparkles size={10} />
-                    ) : (
-                      <Cloud size={10} />
+            <button
+              onClick={() => setPage("explorer")}
+              className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-[13px] font-medium transition-colors cursor-pointer ${page === "explorer"
+                  ? "bg-[#2563EB]/10 text-[#3B82F6]"
+                  : "text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820]"
+                }`}
+            >
+              <Database size={15} />
+              <span>Data Explorer</span>
+            </button>
+
+            <button
+              onClick={() => setIsSourceModalOpen(true)}
+              className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-[13px] font-medium text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820] transition-colors cursor-pointer"
+            >
+              <HardDrive size={15} />
+              <span>Data Sources</span>
+            </button>
+          </div>
+
+          {/* AI Model Selector */}
+          <div className="px-3 py-2.5 border-b border-[#1E2230]/60 flex-shrink-0">
+            <div className="text-[10px] font-medium text-[#6B7280] uppercase tracking-wider px-1 mb-1.5">
+              AI Model
+            </div>
+            <div className="relative" ref={modelDropdownRef}>
+              <button
+                onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-[#151820] border border-[#272B35] hover:border-[#3B82F6]/40 text-[12.5px] text-[#E5E7EB] transition-all cursor-pointer"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {(() => {
+                    const current = availableModels.find(m => m.id === selectedModel);
+                    const provider = current?.provider || "";
+                    const badgeClass =
+                      provider === "ollama"
+                        ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                        : provider === "groq"
+                          ? "bg-orange-500/15 text-orange-400 border border-orange-500/30"
+                          : provider === "gemini" || provider === "google"
+                            ? "bg-sky-500/15 text-sky-400 border border-sky-500/30"
+                            : "bg-violet-500/15 text-violet-400 border border-violet-500/30";
+                    const badgeIcon =
+                      provider === "ollama" ? (
+                        <Monitor size={10} />
+                      ) : provider === "groq" ? (
+                        <Zap size={10} />
+                      ) : provider === "gemini" || provider === "google" ? (
+                        <Sparkles size={10} />
+                      ) : (
+                        <Cloud size={10} />
+                      );
+                    return (
+                      <>
+                        <span className={`flex-shrink-0 w-4.5 h-4.5 rounded flex items-center justify-center text-[9px] font-bold ${badgeClass}`}>
+                          {badgeIcon}
+                        </span>
+                        <span className="truncate">{current?.name || "Select Model"}</span>
+                      </>
                     );
+                  })()}
+                </div>
+                <ChevronDown size={13} className={`flex-shrink-0 text-[#6B7280] transition-transform ${isModelDropdownOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {isModelDropdownOpen && (
+                <div className="absolute left-0 right-0 top-full mt-1 bg-[#151820] border border-[#272B35] rounded-lg shadow-xl shadow-black/40 z-50 overflow-hidden">
+                  {availableModels.map((model) => {
+                    const mBadgeClass =
+                      model.provider === "ollama"
+                        ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                        : model.provider === "groq"
+                          ? "bg-orange-500/15 text-orange-400 border border-orange-500/30"
+                          : model.provider === "gemini" || model.provider === "google"
+                            ? "bg-sky-500/15 text-sky-400 border border-sky-500/30"
+                            : "bg-violet-500/15 text-violet-400 border border-violet-500/30";
+                    const mBadgeIcon =
+                      model.provider === "ollama" ? (
+                        <Monitor size={10} />
+                      ) : model.provider === "groq" ? (
+                        <Zap size={10} />
+                      ) : model.provider === "gemini" || model.provider === "google" ? (
+                        <Sparkles size={10} />
+                      ) : (
+                        <Cloud size={10} />
+                      );
+                    return (
+                      <button
+                        key={model.id}
+                        onClick={() => handleModelSelect(model.id)}
+                        className={`w-full flex items-center gap-2 px-3 py-2 text-[12.5px] transition-colors cursor-pointer ${model.id === selectedModel
+                            ? "bg-[#2563EB]/10 text-blue-400"
+                            : "text-[#D1D5DB] hover:bg-[#1E2230] hover:text-[#F3F4F6]"
+                          }`}
+                      >
+                        <span className={`flex-shrink-0 w-4.5 h-4.5 rounded flex items-center justify-center text-[9px] font-bold ${mBadgeClass}`}>
+                          {mBadgeIcon}
+                        </span>
+                        <span className="truncate w-full text-left">{model.name}</span>
+                        {model.id === selectedModel && (
+                          <Check size={13} className="flex-shrink-0 ml-auto text-blue-400" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Recent Chats on Sidebar (ChatGPT / Claude style) */}
+          <div className="flex-1 overflow-y-auto px-2 py-3 min-h-0">
+            <div className="flex items-center justify-between px-2 mb-1.5">
+              <span className="text-[10px] font-semibold text-[#6B7280] uppercase tracking-wider">
+                Recent Chats
+              </span>
+              {recentChats.length > 0 && (
+                <span className="text-[10px] text-[#6B7280] font-medium">
+                  {recentChats.length} / 10
+                </span>
+              )}
+            </div>
+
+            {recentChats.length === 0 ? (
+              <div className="px-2 py-6 text-center">
+                <p className="text-[12px] text-[#6B7280]">No recent chats</p>
+                <p className="text-[11px] text-[#4B5563] mt-0.5">Your conversations will appear here</p>
+              </div>
+            ) : (
+              <div className="space-y-0.5">
+                {recentChats.map((chat) => {
+                  const isActive = currentChatId === chat.id && page === "agent";
                   return (
-                    <button
-                      key={model.id}
-                      onClick={() => handleModelSelect(model.id)}
-                      className={`w-full flex items-center gap-2 px-3 py-2 text-[12.5px] transition-colors cursor-pointer ${
-                        model.id === selectedModel
-                          ? "bg-[#2563EB]/10 text-blue-400"
-                          : "text-[#D1D5DB] hover:bg-[#1E2230] hover:text-[#F3F4F6]"
-                      }`}
+                    <div
+                      key={chat.id}
+                      onClick={() => handleSelectChat(chat)}
+                      className={`group flex items-center justify-between px-2.5 py-2 rounded-lg text-[13px] transition-all cursor-pointer ${isActive
+                          ? "bg-blue-600/15 text-blue-400 font-medium"
+                          : "text-[#9CA3AF] hover:text-[#F3F4F6] hover:bg-[#151820]"
+                        }`}
+                      title={chat.title}
                     >
-                      <span className={`flex-shrink-0 w-4.5 h-4.5 rounded flex items-center justify-center text-[9px] font-bold ${mBadgeClass}`}>
-                        {mBadgeIcon}
-                      </span>
-                      <span className="truncate w-full text-left">{model.name}</span>
-                      {model.id === selectedModel && (
-                        <Check size={13} className="flex-shrink-0 ml-auto text-blue-400" />
-                      )}
-                    </button>
+                      <div className="flex items-center gap-2 min-w-0 flex-1 mr-1">
+                        <MessageSquare
+                          size={14}
+                          className={`flex-shrink-0 ${isActive ? "text-blue-400" : "text-[#6B7280] group-hover:text-[#9CA3AF]"
+                            }`}
+                        />
+                        <span className="truncate">{chat.title || "Conversation"}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteChat(chat.id);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-1 text-[#6B7280] hover:text-red-400 rounded hover:bg-[#1E2230] transition-all flex-shrink-0"
+                        title="Delete conversation"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
                   );
                 })}
               </div>
             )}
           </div>
-        </div>
 
-        {/* Recent Chats on Sidebar (ChatGPT / Claude style) */}
-        <div className="flex-1 overflow-y-auto px-2 py-3 min-h-0">
-          <div className="flex items-center justify-between px-2 mb-1.5">
-            <span className="text-[10px] font-semibold text-[#6B7280] uppercase tracking-wider">
-              Recent Chats
-            </span>
-            {recentChats.length > 0 && (
-              <span className="text-[10px] text-[#6B7280] font-medium">
-                {recentChats.length} / 10
-              </span>
-            )}
-          </div>
-
-          {recentChats.length === 0 ? (
-            <div className="px-2 py-6 text-center">
-              <p className="text-[12px] text-[#6B7280]">No recent chats</p>
-              <p className="text-[11px] text-[#4B5563] mt-0.5">Your conversations will appear here</p>
-            </div>
-          ) : (
-            <div className="space-y-0.5">
-              {recentChats.map((chat) => {
-                const isActive = currentChatId === chat.id && page === "agent";
-                return (
-                  <div
-                    key={chat.id}
-                    onClick={() => handleSelectChat(chat)}
-                    className={`group flex items-center justify-between px-2.5 py-2 rounded-lg text-[13px] transition-all cursor-pointer ${
-                      isActive
-                        ? "bg-blue-600/15 text-blue-400 font-medium"
-                        : "text-[#9CA3AF] hover:text-[#F3F4F6] hover:bg-[#151820]"
-                    }`}
-                    title={chat.title}
-                  >
-                    <div className="flex items-center gap-2 min-w-0 flex-1 mr-1">
-                      <MessageSquare
-                        size={14}
-                        className={`flex-shrink-0 ${
-                          isActive ? "text-blue-400" : "text-[#6B7280] group-hover:text-[#9CA3AF]"
-                        }`}
-                      />
-                      <span className="truncate">{chat.title || "Conversation"}</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteChat(chat.id);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 p-1 text-[#6B7280] hover:text-red-400 rounded hover:bg-[#1E2230] transition-all flex-shrink-0"
-                      title="Delete conversation"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Footer: Connected Source + User Sign Out */}
-        <div className="p-3 border-t border-[#1E2230] space-y-2 flex-shrink-0">
-          <div
-            onClick={() => setIsSourceModalOpen(true)}
-            className="p-2 rounded-lg bg-[#151820] border border-[#272B35] hover:border-blue-500/40 cursor-pointer transition-all"
-          >
-            <div className="flex items-center justify-between mb-0.5">
-              <span className="text-[10px] font-medium text-[#6B7280] uppercase tracking-wider">
-                Connected Source
-              </span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            </div>
-            <p className="text-[12px] font-medium text-[#E5E7EB] truncate">
-              {activeSource?.name || "Default Database"}
-            </p>
-          </div>
-
-          <div className="pt-0.5 flex items-center justify-between">
-            {user && (
-              <p className="text-[11.5px] text-[#6B7280] truncate max-w-[130px]" title={user.Email}>
-                {user.Email}
-              </p>
-            )}
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-1.5 px-2 py-1 rounded text-[12px] text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820] transition-colors cursor-pointer ml-auto"
-              title="Sign out"
+          {/* Footer: Connected Source + User Sign Out */}
+          <div className="p-3 border-t border-[#1E2230] space-y-2 flex-shrink-0">
+            <div
+              onClick={() => setIsSourceModalOpen(true)}
+              className="p-2 rounded-lg bg-[#151820] border border-[#272B35] hover:border-blue-500/40 cursor-pointer transition-all"
             >
-              <LogOut size={14} />
-              <span>Sign out</span>
-            </button>
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-[10px] font-medium text-[#6B7280] uppercase tracking-wider">
+                  Connected Source
+                </span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              </div>
+              <p className="text-[12px] font-medium text-[#E5E7EB] truncate">
+                {activeSource?.name || "Default Database"}
+              </p>
+            </div>
+
+            <div className="pt-0.5 flex items-center justify-between">
+              {user && (
+                <p className="text-[11.5px] text-[#6B7280] truncate max-w-[130px]" title={user.Email}>
+                  {user.Email}
+                </p>
+              )}
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-1.5 px-2 py-1 rounded text-[12px] text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820] transition-colors cursor-pointer ml-auto"
+                title="Sign out"
+              >
+                <LogOut size={14} />
+                <span>Sign out</span>
+              </button>
+            </div>
           </div>
         </div>
       </aside>
@@ -1236,11 +1285,15 @@ export default function App() {
             setCurrentChatId={setCurrentChatId}
             onSaveChatSession={handleSaveChatSession}
             onNewChat={handleNewChat}
+            isSidebarOpen={isSidebarOpen}
+            onToggleSidebar={toggleSidebar}
           />
         ) : (
           <DataExplorer
             activeSource={activeSource}
             onOpenSourceModal={() => setIsSourceModalOpen(true)}
+            isSidebarOpen={isSidebarOpen}
+            onToggleSidebar={toggleSidebar}
           />
         )}
       </main>

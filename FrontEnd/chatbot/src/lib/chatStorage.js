@@ -1,6 +1,6 @@
 // Local storage manager for recent chat conversations (capped at 10)
 
-const STORAGE_KEY = "kadash_recent_chats";
+const STORAGE_KEY = "Veyra_recent_chats";
 const MAX_CHATS = 10;
 
 /**

@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: kadash-ai-backend
+    name: Veyra-ai-backend
     runtime: docker
     rootDir: AI_BackEnd
     dockerfilePath: Dockerfile

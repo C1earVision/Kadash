@@ -1,6 +1,6 @@
 <div align="center">
 
-# Kadash
+# Veyra
 
 **An intelligent multi-agent BI assistant & management platform that turns natural language into SQL queries, interactive dashboards, and actionable insights — powered by LangGraph & Agentic RAG**
 
@@ -16,7 +16,7 @@
 
 ## Live Demo
 
-🔗 **https://kadash-chi.vercel.app/**
+🔗 **https://Veyra-chi.vercel.app/**
 
 Login Credentials for Live Demo:
 Email: `akali@gmaill.com` | Password: `akali`
@@ -25,9 +25,9 @@ Email: `akali@gmaill.com` | Password: `akali`
 
 ## Overview
 
-Kadash is a full-stack **Agentic RAG** (Retrieval-Augmented Generation) assistant and business intelligence platform. It uses a **multi-agent architecture** where a General Router Agent analyzes each query and delegates it to the best-fit specialized agent — whether that's searching the web, querying any connected database via natural language SQL, performing CRUD operations, or generating interactive multi-page dashboards with KPIs and charts.
+Veyra is a full-stack **Agentic RAG** (Retrieval-Augmented Generation) assistant and business intelligence platform. It uses a **multi-agent architecture** where a General Router Agent analyzes each query and delegates it to the best-fit specialized agent — whether that's searching the web, querying any connected database via natural language SQL, performing CRUD operations, or generating interactive multi-page dashboards with KPIs and charts.
 
-**What makes Kadash different from conventional chatbot or BI tools:**
+**What makes Veyra different from conventional chatbot or BI tools:**
 
 - **Domain-agnostic** — works across any business domain (e-commerce, banking, restaurant, healthcare, SaaS, etc.) by dynamically discovering database schemas at runtime rather than relying on hardcoded table structures.
 - **Bring Your Own Data** — users can connect any external PostgreSQL/MySQL/SQLite database via connection string, or upload CSV/Excel files that are automatically ingested into a DuckDB analytics engine and become queryable instantly.
@@ -139,7 +139,7 @@ Each model instance is wrapped in `ResilientChatGroq` / `ResilientChatOpenAI` wh
 
 ## Dynamic Data Sources
 
-A major feature of Kadash is the ability to **connect any data source at runtime** — not just the default PostgreSQL database.
+A major feature of Veyra is the ability to **connect any data source at runtime** — not just the default PostgreSQL database.
 
 ### Connect an External Database
 Paste a connection string (PostgreSQL, MySQL, SQLite, SQL Server) in the Data Source Modal. The system auto-discovers all tables and schemas, making them immediately queryable by any agent.
@@ -177,7 +177,7 @@ When the Analysis Agent generates a dashboard, it returns a structured JSON spec
 ## Project Structure
 
 ```
-📁 Kadash/
+📁 Veyra/
 ├── 📁 AI_BackEnd/                  # Python — FastAPI + LangGraph Agents
 │   ├── main.py                     # FastAPI server, /query endpoint, data source endpoints, visualization parser
 │   ├── Agent/

@@ -26,6 +26,13 @@ import {
   MapPin,
   SlidersHorizontal,
   FileSpreadsheet,
+  Download,
+  TrendingUp,
+  TrendingDown,
+  Sparkles,
+  ArrowUpRight,
+  ArrowDownRight,
+  RotateCcw,
 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -40,16 +47,16 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
-/* ─── Chart color palette — muted, professional, distinguishable ─── */
+/* ─── Chart color palette — refined enterprise analytics with green accent ─── */
 const COLORS = [
-  "#5B8DEF",
-  "#3EBD93",
-  "#E8A44A",
-  "#8B7FDE",
-  "#E06C75",
-  "#56B6C2",
-  "#98C379",
-  "#D19A66",
+  "#10B981", // Vibrant Emerald Green (accent)
+  "#3B82F6", // Primary Electric Blue
+  "#F59E0B", // Warm Amber
+  "#6366F1", // Slate Indigo
+  "#06B6D4", // Cyan
+  "#F43F5E", // Rose
+  "#84CC16", // Lime
+  "#8B5CF6", // Violet
 ];
 
 /* ─── Helpers for KPI and Label Formatting ─── */
@@ -197,9 +204,9 @@ function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
 
   return (
-    <div className="rounded bg-[#1A1D24] border border-[#262A32] px-3 py-2 shadow-lg text-[11px]">
+    <div className="rounded-lg bg-[#141822]/95 backdrop-blur-md border border-[#2B3547] px-3 py-2 shadow-xl text-[11px] min-w-[140px]">
       {label && (
-        <p className="font-medium text-[#D0D3D8] mb-1.5 pb-1.5 border-b border-[#262A32]">
+        <p className="font-semibold text-[#F1F3F5] mb-1.5 pb-1 border-b border-[#222734]">
           {label}
         </p>
       )}
@@ -221,9 +228,9 @@ function ChartTooltip({ active, payload, label }) {
                       entry.color || entry.fill || COLORS[idx % COLORS.length],
                   }}
                 />
-                <span className="text-[#8B8F98]">{entry.name}</span>
+                <span className="text-[#94A3B8]">{entry.name}</span>
               </div>
-              <span className="font-mono font-medium text-[#D0D3D8]">
+              <span className="font-mono font-bold text-[#FFFFFF]">
                 {val}
               </span>
             </div>
@@ -235,18 +242,22 @@ function ChartTooltip({ active, payload, label }) {
 }
 
 /* ─── Shared axis/grid props ─── */
-const GRID_PROPS = { stroke: "#1E2128", vertical: false };
+const GRID_PROPS = {
+  stroke: "#1F2533",
+  strokeDasharray: "3 3",
+  vertical: false,
+};
 const X_AXIS_PROPS = {
-  stroke: "#4A4E58",
-  fontSize: 11,
+  stroke: "#262D3D",
+  tick: { fill: "#94A3B8", fontSize: 11 },
   tickLine: false,
-  axisLine: false,
+  axisLine: { stroke: "#242C3C" },
   tickMargin: 8,
   tickFormatter: (v) => formatCellLabel(v),
 };
 const Y_AXIS_PROPS = {
-  stroke: "#4A4E58",
-  fontSize: 11,
+  stroke: "#262D3D",
+  tick: { fill: "#94A3B8", fontSize: 11 },
   tickLine: false,
   axisLine: false,
   width: 48,
@@ -258,11 +269,11 @@ const Y_AXIS_PROPS = {
       : v,
 };
 const LEGEND_PROPS = {
-  wrapperStyle: { fontSize: "11px", paddingTop: "12px", color: "#6B7075" },
+  wrapperStyle: { fontSize: "11.5px", paddingTop: "12px", color: "#94A3B8" },
   iconType: "circle",
-  iconSize: 6,
+  iconSize: 7,
 };
-const MARGIN = { top: 8, right: 8, left: 0, bottom: 0 };
+const MARGIN = { top: 12, right: 18, left: -6, bottom: 6 };
 
 /* ─── Geographic Coordinate Resolution (Brazilian States/Cities, US, Global) ─── */
 const BRAZIL_STATES_GEO = {
@@ -520,10 +531,10 @@ function MapChart({ chart, height = 260 }) {
 
   if (markers.length === 0) {
     return (
-      <div className="h-full flex flex-col items-center justify-center text-[12px] text-[#4A4E58] gap-1 px-4 text-center">
-        <MapPin size={24} className="text-[#3A3E48] mb-1" />
-        <span>No geographic coordinates or recognized locations found</span>
-        <span className="text-[10px] text-[#3A3E48]">Supported: Brazilian states (SP, RJ, MG...), major cities, and coordinate pairs</span>
+      <div className="h-full flex flex-col items-center justify-center text-[12px] text-[#64748B] gap-1 px-4 text-center">
+        <MapPin size={22} className="text-[#3A4559] mb-1" />
+        <span className="text-[#94A3B8]">No geographic coordinates or recognized locations found</span>
+        <span className="text-[10px] text-[#64748B]">Supported: Brazilian states (SP, RJ, MG...), major cities, and coordinate pairs</span>
       </div>
     );
   }
@@ -532,16 +543,16 @@ function MapChart({ chart, height = 260 }) {
   const avgLng = markers.reduce((s, m) => s + m.lng, 0) / markers.length;
 
   return (
-    <div style={{ height: `${height}px` }} className="w-full rounded overflow-hidden relative">
+    <div style={{ height: `${height}px` }} className="w-full rounded-lg overflow-hidden relative border border-[#202734]">
       {/* Floating Basemap Style Switcher (all 100% free, no API key required) */}
-      <div className="absolute top-2 right-2 z-[1000] flex items-center bg-[#16181E]/90 backdrop-blur-md border border-[#262A32] rounded-md p-0.5 shadow-lg pointer-events-auto">
+      <div className="absolute top-2.5 right-2.5 z-[1000] flex items-center bg-[#131720]/90 backdrop-blur-md border border-[#242C3C] rounded-md p-0.5 shadow-lg pointer-events-auto">
         <button
           type="button"
           onClick={() => setTileStyle("dark")}
           className={`px-2 py-0.5 text-[10px] rounded transition-all font-medium ${
             tileStyle === "dark"
-              ? "bg-[#262A32] text-white shadow-sm"
-              : "text-gray-400 hover:text-white"
+              ? "bg-[#242C3C] text-white shadow-xs"
+              : "text-[#8C93A0] hover:text-[#F1F3F5]"
           }`}
           title="Dark Canvas (Free, No API key)"
         >
@@ -552,8 +563,8 @@ function MapChart({ chart, height = 260 }) {
           onClick={() => setTileStyle("streets")}
           className={`px-2 py-0.5 text-[10px] rounded transition-all font-medium ${
             tileStyle === "streets"
-              ? "bg-[#262A32] text-white shadow-sm"
-              : "text-gray-400 hover:text-white"
+              ? "bg-[#242C3C] text-white shadow-xs"
+              : "text-[#8C93A0] hover:text-[#F1F3F5]"
           }`}
           title="OpenStreetMap Streets (Free, No API key)"
         >
@@ -564,8 +575,8 @@ function MapChart({ chart, height = 260 }) {
           onClick={() => setTileStyle("satellite")}
           className={`px-2 py-0.5 text-[10px] rounded transition-all font-medium ${
             tileStyle === "satellite"
-              ? "bg-[#262A32] text-white shadow-sm"
-              : "text-gray-400 hover:text-white"
+              ? "bg-[#242C3C] text-white shadow-xs"
+              : "text-[#8C93A0] hover:text-[#F1F3F5]"
           }`}
           title="Satellite Imagery (Free, No API key)"
         >
@@ -624,24 +635,24 @@ function MapChart({ chart, height = 260 }) {
           <Marker key={m.idx} position={[m.lat, m.lng]}>
             <Popup>
               <div className="text-[12px] min-w-[140px] py-0.5">
-                <div className="font-semibold text-white text-[13px] border-b border-[#262A32] pb-1 mb-1">
+                <div className="font-semibold text-white text-[12.5px] border-b border-[#2B3547] pb-1 mb-1">
                   {m.label}
                 </div>
                 {chart.dataKeys?.map((dk) => {
                   const rawVal = m.row[dk.key];
                   if (rawVal === undefined || rawVal === null) return null;
                   return (
-                    <div key={dk.key} className="flex items-center justify-between gap-2 text-[11px] text-gray-400 mt-0.5">
+                    <div key={dk.key} className="flex items-center justify-between gap-2 text-[11px] text-[#94A3B8] mt-0.5">
                       <span>{dk.name || dk.key}:</span>
-                      <strong className="text-white font-mono">
+                      <strong className="text-white font-mono font-semibold">
                         {typeof rawVal === "number" ? rawVal.toLocaleString() : rawVal}
                       </strong>
                     </div>
                   );
                 })}
                 {(!chart.dataKeys || chart.dataKeys.length === 0) && m.value !== undefined && (
-                  <div className="text-[11px] text-gray-300">
-                    Value: <b className="text-white">{typeof m.value === "number" ? m.value.toLocaleString() : m.value}</b>
+                  <div className="text-[11px] text-[#94A3B8]">
+                    Value: <b className="text-white font-mono font-semibold">{typeof m.value === "number" ? m.value.toLocaleString() : m.value}</b>
                   </div>
                 )}
               </div>
@@ -732,7 +743,7 @@ function DashboardSliderControl({ slider, value, onChange, onReset, affectedChar
     if (slider.targetScope === "all") {
       return {
         label: "Entire Dashboard",
-        cls: "text-purple-400 bg-purple-500/10 border-purple-500/20",
+        cls: "text-[#A78BFA] bg-[#8B5CF6]/10 border-[#8B5CF6]/25",
         tooltip: "Filters matching data across all pages and charts in the dashboard",
       };
     }
@@ -740,13 +751,13 @@ function DashboardSliderControl({ slider, value, onChange, onReset, affectedChar
       const count = slider.targetChartIds?.length || 1;
       return {
         label: count === 1 ? "1 Chart" : `${count} Charts`,
-        cls: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+        cls: "text-[#34D399] bg-[#10B981]/10 border-[#10B981]/25",
         tooltip: "Filters only specific targeted chart(s)",
       };
     }
     return {
       label: "Current Page",
-      cls: "text-blue-400 bg-blue-500/10 border-blue-500/20",
+      cls: "text-[#60A5FA] bg-[#3B82F6]/10 border-[#3B82F6]/25",
       tooltip: "Filters all matching charts on this page",
     };
   }, [slider.targetScope, slider.targetChartIds]);
@@ -754,34 +765,26 @@ function DashboardSliderControl({ slider, value, onChange, onReset, affectedChar
   const isModified = value !== undefined && value !== (slider.defaultValue ?? slider.sliderMin);
 
   return (
-    <div className="bg-[#12141A] border border-[#262A32] rounded-lg p-3.5 transition-all hover:border-[#3A3F4D]">
+    <div className="bg-[#151921] border border-[#222734] rounded-lg p-2.5 px-3 transition-all hover:border-[#2C3547]">
       {/* Header: Label, Scope Badge & Readout */}
-      <div className="flex items-start justify-between gap-3 mb-2.5">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5 text-[#E0E2E6] font-medium text-[13px]">
-              <SlidersHorizontal size={13} className="text-[#5B8DEF] shrink-0" />
-              <span>{slider.label}</span>
-            </div>
-            <span
-              className={`text-[9.5px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full border ${scopeBadge.cls}`}
-              title={scopeBadge.tooltip}
-            >
-              {scopeBadge.label}
-            </span>
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
+          <div className="flex items-center gap-1.5 text-[#E2E8F0] font-medium text-[12.5px] truncate">
+            <SlidersHorizontal size={12} className="text-[#3B82F6] shrink-0" />
+            <span className="truncate">{slider.label}</span>
           </div>
-          {slider.description && (
-            <p className="text-[11px] text-[#6B7075] mt-0.5 leading-tight">
-              {slider.description}
-            </p>
-          )}
+          <span
+            className={`text-[9px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded border ${scopeBadge.cls}`}
+            title={scopeBadge.tooltip}
+          >
+            {scopeBadge.label}
+          </span>
         </div>
 
         {/* Value readout + Reset button */}
         <div className="flex items-center gap-2 shrink-0">
           <div className="text-right">
-            <span className="text-[11px] text-[#8B8F98]">Threshold: </span>
-            <span className="font-mono font-semibold text-[13px] text-white">
+            <span className="font-mono font-semibold text-[12.5px] text-[#38BDF8]">
               {op} {currentVal.toLocaleString()}{unit && ` ${unit}`}
             </span>
           </div>
@@ -789,17 +792,24 @@ function DashboardSliderControl({ slider, value, onChange, onReset, affectedChar
             <button
               type="button"
               onClick={() => onReset(slider.id)}
-              className="text-[10px] text-[#6B7075] hover:text-white px-1.5 py-0.5 rounded bg-[#1A1D24] border border-[#262A32] transition-colors cursor-pointer"
+              className="text-[9.5px] text-[#94A3B8] hover:text-white px-1.5 py-0.5 rounded bg-[#1C2230] border border-[#283244] hover:bg-[#252E40] transition-colors cursor-pointer flex items-center gap-1"
               title="Reset slider to initial value"
             >
+              <RotateCcw size={9} />
               Reset
             </button>
           )}
         </div>
       </div>
 
+      {slider.description && (
+        <p className="text-[11.5px] text-[#94A3B8] mb-2 leading-normal">
+          {slider.description}
+        </p>
+      )}
+
       {/* Slider Track */}
-      <div className="relative pt-1 pb-1">
+      <div className="relative pt-0.5 pb-0.5">
         <input
           type="range"
           min={min}
@@ -809,13 +819,13 @@ function DashboardSliderControl({ slider, value, onChange, onReset, affectedChar
           onChange={(e) => onChange(slider.id, parseFloat(e.target.value))}
           className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
           style={{
-            background: `linear-gradient(to right, #5B8DEF 0%, #5B8DEF ${pct}%, #1E2128 ${pct}%, #1E2128 100%)`,
+            background: `linear-gradient(to right, #10B981 0%, #10B981 ${pct}%, #1F2533 ${pct}%, #1F2533 100%)`,
           }}
         />
-        <div className="flex justify-between items-center text-[10px] text-[#4A4E58] font-mono mt-1">
+        <div className="flex justify-between items-center text-[9.5px] text-[#64748B] font-mono mt-1">
           <span>{min.toLocaleString()}{unit && ` ${unit}`}</span>
           {affectedChartsCount !== undefined && affectedChartsCount > 0 && (
-            <span className="text-[#5B8DEF] font-sans font-medium text-[10.5px]">
+            <span className="text-[#10B981] font-sans font-medium text-[10px]">
               Active on {affectedChartsCount} {affectedChartsCount === 1 ? "chart" : "charts"}
             </span>
           )}
@@ -827,7 +837,7 @@ function DashboardSliderControl({ slider, value, onChange, onReset, affectedChar
 }
 
 /* ─── Slider Chart (Legacy Fallback) ─── */
-function SliderChart({ chart, height = 260 }) {
+function SliderChart({ chart, height = 290 }) {
   const filterKey = chart.filterKey || chart.dataKeys?.[0]?.key || "value";
   const xKey = chart.xAxisKey || "name";
   const allData = useMemo(() => (Array.isArray(chart.data) ? chart.data : []), [chart.data]);
@@ -851,20 +861,20 @@ function SliderChart({ chart, height = 260 }) {
   const dataKeys =
     Array.isArray(chart.dataKeys) && chart.dataKeys.length > 0
       ? chart.dataKeys
-      : [{ key: filterKey, name: filterKey.replace(/_/g, " "), color: "#5B8DEF" }];
+      : [{ key: filterKey, name: filterKey.replace(/_/g, " "), color: COLORS[0] }];
 
   const pct = dataMax > dataMin ? ((sliderValue - dataMin) / (dataMax - dataMin)) * 100 : 0;
 
   return (
-    <div className="flex flex-col gap-3" style={{ height: `${height}px` }}>
+    <div className="flex flex-col gap-2.5" style={{ height: `${height}px` }}>
       {/* Slider control */}
-      <div className="flex flex-col gap-1.5 px-1">
+      <div className="flex flex-col gap-1 px-0.5">
         <div className="flex items-center justify-between text-[11px]">
-          <span className="text-[#6B7075] flex items-center gap-1.5">
-            <SlidersHorizontal size={12} className="text-[#5B8DEF]" />
-            Threshold: <span className="text-[#D0D3D8] font-mono font-medium">{sliderValue.toLocaleString()}{unit && ` ${unit}`}</span>
+          <span className="text-[#8C93A0] flex items-center gap-1.5">
+            <SlidersHorizontal size={11} className="text-[#10B981]" />
+            Threshold: <span className="text-[#34D399] font-mono font-semibold">{sliderValue.toLocaleString()}{unit && ` ${unit}`}</span>
           </span>
-          <span className="text-[#4A4E58] font-mono">
+          <span className="text-[#64748B] font-mono text-[10px]">
             {filtered.length}/{allData.length} items
           </span>
         </div>
@@ -878,10 +888,10 @@ function SliderChart({ chart, height = 260 }) {
             onChange={(e) => setSliderValue(parseFloat(e.target.value))}
             className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
             style={{
-              background: `linear-gradient(to right, #5B8DEF 0%, #5B8DEF ${pct}%, #1E2128 ${pct}%, #1E2128 100%)`,
+              background: `linear-gradient(to right, #10B981 0%, #10B981 ${pct}%, #1F2533 ${pct}%, #1F2533 100%)`,
             }}
           />
-          <div className="flex justify-between text-[10px] text-[#3A3E48] mt-0.5 font-mono">
+          <div className="flex justify-between text-[9.5px] text-[#64748B] mt-0.5 font-mono">
             <span>{dataMin.toLocaleString()}{unit && ` ${unit}`}</span>
             <span>{dataMax.toLocaleString()}{unit && ` ${unit}`}</span>
           </div>
@@ -891,7 +901,7 @@ function SliderChart({ chart, height = 260 }) {
       {/* Filtered bar chart */}
       <div className="flex-1 min-h-0">
         {filtered.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-[12px] text-[#4A4E58]">
+          <div className="h-full flex items-center justify-center text-[12px] text-[#64748B]">
             No items match this threshold
           </div>
         ) : (
@@ -908,8 +918,8 @@ function SliderChart({ chart, height = 260 }) {
                   dataKey={dk.key}
                   name={dk.name || dk.key}
                   fill={dk.color || COLORS[i % COLORS.length]}
-                  radius={[2, 2, 0, 0]}
-                  maxBarSize={40}
+                  radius={[3, 3, 0, 0]}
+                  maxBarSize={36}
                 />
               ))}
             </BarChart>
@@ -932,41 +942,41 @@ function ChartCard({ chart, onExpand, expanded = false }) {
       ? chart.dataKeys
       : [{ key: "value", name: chart.metricName || "Value", color: COLORS[0] }];
 
-  const h = expanded ? 360 : 260;
+  const h = expanded ? 420 : (type === "map" ? 310 : 290);
 
   return (
-    <div className="group flex flex-col">
+    <div className="group flex flex-col h-full justify-between">
       {/* Header */}
-      <div className="flex items-start justify-between mb-2.5 gap-2">
-        <div className="min-w-0">
+      <div className="flex items-start justify-between mb-2 gap-2">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <h4 className="text-[13px] font-medium text-[#D0D3D8] leading-snug">
+            <h4 className="text-[14px] font-semibold text-[#F8FAFC] tracking-tight leading-snug">
               {chart.title}
             </h4>
             {chart.isFiltered && (
               <span
-                className="text-[9.5px] font-mono text-[#5B8DEF] bg-[#5B8DEF]/10 border border-[#5B8DEF]/20 px-1.5 py-0.5 rounded"
+                className="text-[9.5px] font-mono text-[#10B981] bg-[#10B981]/10 border border-[#10B981]/20 px-1.5 py-0.5 rounded font-medium"
                 title={chart.activeFilterText || "Filtered by interactive slider"}
               >
-                {chart.filteredCount}/{chart.originalCount} items
+                Filtered ({chart.filteredCount})
               </span>
             )}
           </div>
           {chart.description && (
-            <p className="text-[11px] text-[#4A4E58] mt-0.5 leading-normal">
+            <p className="text-[12px] text-[#94A3B8] mt-1 leading-normal">
               {chart.description}
             </p>
           )}
         </div>
-        <div className="flex items-center gap-0.5 shrink-0">
+        <div className="flex items-center gap-1 shrink-0 ml-2">
           <button
             onClick={() => setView((v) => (v === "chart" ? "table" : "chart"))}
-            className={`p-1 rounded transition-colors ${
+            className={`p-1.5 rounded-md transition-colors ${
               view === "table"
-                ? "text-[#5B8DEF]"
-                : "text-[#3A3E48] hover:text-[#8B8F98]"
+                ? "bg-[#1E2534] text-[#10B981]"
+                : "text-[#8C93A0] hover:text-[#F1F3F5] hover:bg-[#1E2534]/50"
             }`}
-            title={view === "chart" ? "View data" : "View chart"}
+            title={view === "chart" ? "View data table" : "View chart"}
           >
             {view === "chart" ? (
               <TableIcon size={14} />
@@ -977,8 +987,8 @@ function ChartCard({ chart, onExpand, expanded = false }) {
           {onExpand && (
             <button
               onClick={() => onExpand(chart)}
-              className="p-1 rounded text-[#3A3E48] hover:text-[#8B8F98] transition-colors"
-              title="Expand"
+              className="p-1.5 rounded-md text-[#8C93A0] hover:text-[#F1F3F5] hover:bg-[#1E2534]/50 transition-colors"
+              title="Expand chart"
             >
               <Maximize2 size={14} />
             </button>
@@ -987,42 +997,42 @@ function ChartCard({ chart, onExpand, expanded = false }) {
       </div>
 
       {/* Canvas */}
-      <div style={{ height: `${h}px` }} className="w-full">
+      <div style={{ height: `${h}px` }} className="w-full mt-1">
         {data.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-[12px] text-[#4A4E58]">
+          <div className="h-full flex items-center justify-center text-[12px] text-[#64748B]">
             No data available
           </div>
         ) : view === "table" ? (
           /* ── Data Table ── */
-          <div className="h-full overflow-auto rounded border border-[#1E2128] bg-[#0E1017]">
+          <div className="h-full overflow-auto rounded border border-[#202734] bg-[#10131B]">
             <table className="w-full text-left text-[11px] border-collapse">
-              <thead className="bg-[#14161C] text-[#6B7075] sticky top-0 z-10">
+              <thead className="bg-[#161B24] text-[#8C93A0] sticky top-0 z-10 border-b border-[#202734]">
                 <tr>
-                  <th className="px-3 py-2 font-medium w-8">#</th>
-                  <th className="px-3 py-2 font-medium">{xKey}</th>
+                  <th className="px-2.5 py-1.5 font-semibold uppercase text-[9.5px] tracking-wider w-8">#</th>
+                  <th className="px-2.5 py-1.5 font-semibold uppercase text-[9.5px] tracking-wider">{xKey}</th>
                   {dataKeys.map((dk) => (
                     <th
                       key={dk.key}
-                      className="px-3 py-2 font-medium text-right"
+                      className="px-2.5 py-1.5 font-semibold uppercase text-[9.5px] tracking-wider text-right"
                     >
                       {dk.name || dk.key}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="text-[#B0B4BC] divide-y divide-[#1A1D24]">
+              <tbody className="text-[#CBD5E1] divide-y divide-[#1A202C]">
                 {data.map((row, ri) => (
-                  <tr key={ri} className="hover:bg-[#14161C]/60">
-                    <td className="px-3 py-2 text-[#4A4E58] font-mono">
+                  <tr key={ri} className="hover:bg-[#161B24]/70 transition-colors">
+                    <td className="px-2.5 py-1.5 text-[#64748B] font-mono text-[10px]">
                       {ri + 1}
                     </td>
-                    <td className="px-3 py-2 text-[#D0D3D8]">
+                    <td className="px-2.5 py-1.5 text-[#E2E8F0]">
                       {formatCellLabel(row[xKey], xKey)}
                     </td>
                     {dataKeys.map((dk) => (
                       <td
                         key={dk.key}
-                        className="px-3 py-2 text-right font-mono"
+                        className="px-2.5 py-1.5 text-right font-mono text-[#F1F3F5]"
                       >
                         {typeof row[dk.key] === "number"
                           ? row[dk.key].toLocaleString(undefined, {
@@ -1051,9 +1061,9 @@ function ChartCard({ chart, onExpand, expanded = false }) {
                   dataKey={dk.key}
                   name={dk.name || dk.key}
                   stroke={dk.color || COLORS[i % COLORS.length]}
-                  strokeWidth={2}
+                  strokeWidth={2.2}
                   dot={{ fill: dk.color || COLORS[i % COLORS.length], r: 2.5, strokeWidth: 0 }}
-                  activeDot={{ r: 4, strokeWidth: 0 }}
+                  activeDot={{ r: 4.5, stroke: "#151921", strokeWidth: 2 }}
                 />
               ))}
             </LineChart>
@@ -1073,8 +1083,8 @@ function ChartCard({ chart, onExpand, expanded = false }) {
                       x2="0"
                       y2="1"
                     >
-                      <stop offset="5%" stopColor={c} stopOpacity={0.18} />
-                      <stop offset="95%" stopColor={c} stopOpacity={0} />
+                      <stop offset="5%" stopColor={c} stopOpacity={0.24} />
+                      <stop offset="95%" stopColor={c} stopOpacity={0.01} />
                     </linearGradient>
                   );
                 })}
@@ -1093,7 +1103,7 @@ function ChartCard({ chart, onExpand, expanded = false }) {
                     dataKey={dk.key}
                     name={dk.name || dk.key}
                     stroke={c}
-                    strokeWidth={1.5}
+                    strokeWidth={2}
                     fillOpacity={1}
                     fill={`url(#g_${dk.key})`}
                   />
@@ -1112,11 +1122,11 @@ function ChartCard({ chart, onExpand, expanded = false }) {
                 nameKey={xKey}
                 cx="50%"
                 cy="50%"
-                innerRadius={type === "donut" ? 50 : 0}
-                outerRadius={80}
-                paddingAngle={1}
-                stroke="#0C0D12"
-                strokeWidth={1}
+                innerRadius={type === "donut" ? 52 : 0}
+                outerRadius={78}
+                paddingAngle={2}
+                stroke="#151921"
+                strokeWidth={2}
               >
                 {data.map((_, index) => (
                   <Cell
@@ -1146,8 +1156,8 @@ function ChartCard({ chart, onExpand, expanded = false }) {
                   dataKey={dk.key}
                   name={dk.name || dk.key}
                   fill={dk.color || COLORS[i % COLORS.length]}
-                  radius={[2, 2, 0, 0]}
-                  maxBarSize={40}
+                  radius={[3, 3, 0, 0]}
+                  maxBarSize={36}
                 />
               ))}
             </BarChart>
@@ -1163,25 +1173,25 @@ function ChartModal({ chart, onClose }) {
   if (!chart) return null;
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 backdrop-blur-md p-6 animate-in fade-in duration-150"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 sm:p-6 animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-4xl bg-[#12141A] border border-[#262A32] rounded-lg p-6 relative shadow-2xl max-h-[90vh] overflow-y-auto"
+        className="w-full max-w-4xl bg-[#10131B] border border-[#222734] rounded-xl p-5 sm:p-6 relative shadow-2xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-1.5 rounded text-[#6B7075] hover:text-[#D0D3D8] hover:bg-[#1E2128] transition-colors cursor-pointer"
+          className="absolute top-4 right-4 p-1.5 rounded-lg bg-[#161B24] border border-[#222734] text-[#8C93A0] hover:text-white hover:bg-[#1E2534] transition-all cursor-pointer"
           title="Close (Esc)"
         >
-          <X size={16} />
+          <X size={15} />
         </button>
-        <h3 className="text-[15px] font-semibold text-[#D0D3D8] mb-1">
+        <h3 className="text-[15px] font-semibold text-[#F1F3F5] mb-1">
           {chart.title}
         </h3>
         {chart.description && (
-          <p className="text-[12px] text-[#6B7075] mb-4">{chart.description}</p>
+          <p className="text-[12px] text-[#8C93A0] mb-4">{chart.description}</p>
         )}
         <div className="w-full">
           <ChartCard chart={chart} expanded />
@@ -1466,40 +1476,51 @@ export default function InteractiveDashboard({ spec }) {
 
   /* ─── Dashboard body (shared between inline and fullscreen) ─── */
   const body = (fs = false) => (
-    <div>
+    <div className="space-y-4">
       {/* ── Header ── */}
-      <div className="flex items-start justify-between mb-5 gap-4">
-        <div className="min-w-0">
-          <h3 className="text-[17px] font-semibold text-[#E0E2E6] tracking-tight leading-tight">
-            {report.title}
-          </h3>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 pb-4 border-b border-[#202734]">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h3 className="text-[18px] sm:text-[19px] font-bold text-[#F8FAFC] tracking-tight leading-snug">
+              {report.title}
+            </h3>
+            <span className="text-[9.5px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-[#10B981]/10 text-[#34D399] border border-[#10B981]/25">
+              BI Dashboard
+            </span>
+          </div>
           {(page.summary || report.subtitle) && (
-            <p className="text-[12px] text-[#6B7075] mt-1 leading-normal">
+            <p className="text-[12.5px] text-[#94A3B8] mt-1 leading-relaxed max-w-4xl">
               {page.summary || report.subtitle}
             </p>
           )}
         </div>
-        <div className="flex items-center gap-4 shrink-0 pt-0.5">
+        <div className="flex items-center gap-2 shrink-0 self-start sm:self-center">
           <button
             onClick={() => exportPageToCsv({ ...page, charts: filteredCharts }, report.title)}
-            className="text-[11px] text-[#4A4E58] hover:text-[#8B8F98] transition-colors"
-            title="Export as CSV"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11.5px] font-medium bg-[#151921] hover:bg-[#1E2534] border border-[#222734] hover:border-[#2E374A] text-[#CBD5E1] hover:text-white transition-all shadow-xs cursor-pointer"
+            title="Export active page data as CSV"
           >
-            CSV
+            <Download size={13} className="text-[#94A3B8]" />
+            <span>CSV</span>
           </button>
           <button
             onClick={() => exportReportToXlsx(report, { ...page, charts: filteredCharts })}
-            className="text-[11px] text-[#4A4E58] hover:text-[#8B8F98] transition-colors flex items-center gap-1"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11.5px] font-medium bg-[#151921] hover:bg-[#1E2534] border border-[#222734] hover:border-[#2E374A] text-[#CBD5E1] hover:text-white transition-all shadow-xs cursor-pointer"
             title="Export full report to Excel (.xlsx) — ready for Power BI Desktop"
           >
-            <FileSpreadsheet size={12} />
-            XLSX (Power BI)
+            <FileSpreadsheet size={13} className="text-[#10B981]" />
+            <span>Excel</span>
           </button>
           <button
             onClick={() => setIsFullscreen(!fs)}
-            className="text-[11px] text-[#4A4E58] hover:text-[#8B8F98] transition-colors flex items-center gap-1"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11.5px] font-medium bg-[#151921] hover:bg-[#1E2534] border border-[#222734] hover:border-[#2E374A] text-[#CBD5E1] hover:text-white transition-all shadow-xs cursor-pointer"
+            title={fs ? "Exit fullscreen" : "Expand to fullscreen"}
           >
-            {fs ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+            {fs ? (
+              <Minimize2 size={13} className="text-[#10B981]" />
+            ) : (
+              <Maximize2 size={13} className="text-[#10B981]" />
+            )}
             <span>{fs ? "Close" : "Expand"}</span>
           </button>
         </div>
@@ -1507,70 +1528,103 @@ export default function InteractiveDashboard({ spec }) {
 
       {/* ── Page tabs ── */}
       {pages.length > 1 && (
-        <div className="flex items-center gap-5 border-b border-[#1E2128] mb-5 overflow-x-auto">
+        <div className="flex items-center gap-6 border-b border-[#202734] overflow-x-auto">
           {pages.map((p, idx) => {
             const active = idx === activePageIndex;
             return (
               <button
                 key={p.id || idx}
                 onClick={() => setActivePageIndex(idx)}
-                className={`pb-2.5 text-[12px] font-medium transition-colors whitespace-nowrap border-b-2 -mb-px ${
+                className={`pb-2.5 text-[12.5px] font-medium transition-all whitespace-nowrap border-b-2 -mb-px flex items-center gap-1.5 cursor-pointer ${
                   active
-                    ? "text-[#D0D3D8] border-[#5B8DEF]"
-                    : "text-[#4A4E58] border-transparent hover:text-[#8B8F98]"
+                    ? "text-[#10B981] border-[#10B981] font-semibold"
+                    : "text-[#8C93A0] border-transparent hover:text-[#CBD5E1]"
                 }`}
               >
-                {p.name}
+                <span>{p.name}</span>
+                {Array.isArray(p.charts) && p.charts.length > 0 && (
+                  <span
+                    className={`text-[9.5px] px-1.5 py-0.2 rounded-full font-mono ${
+                      active
+                        ? "bg-[#10B981]/15 text-[#34D399]"
+                        : "bg-[#1E2534] text-[#64748B]"
+                    }`}
+                  >
+                    {p.charts.length}
+                  </span>
+                )}
               </button>
             );
           })}
         </div>
       )}
 
-      {/* ── KPIs ── */}
+      {/* ── KPIs Row ── */}
       {kpis.length > 0 && (
         <div
-          className={`grid gap-x-6 gap-y-4 mb-6 ${
-            kpis.length <= 2
-              ? "grid-cols-2"
+          className={`grid gap-3.5 ${
+            kpis.length === 1
+              ? "grid-cols-1 max-w-sm"
+              : kpis.length === 2
+              ? "grid-cols-1 sm:grid-cols-2"
               : kpis.length === 3
-              ? "grid-cols-3"
-              : "grid-cols-2 sm:grid-cols-4"
+              ? "grid-cols-1 sm:grid-cols-3"
+              : kpis.length === 4
+              ? "grid-cols-2 lg:grid-cols-4"
+              : kpis.length === 5
+              ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-5"
+              : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6"
           }`}
         >
           {kpis.map((kpi, idx) => {
-            const isPos =
-              typeof kpi.change === "string" &&
-              kpi.change.trim().startsWith("+");
-            const isNeg =
-              typeof kpi.change === "string" &&
-              kpi.change.trim().startsWith("-");
+            const changeStr = typeof kpi.change === "string" ? kpi.change.trim() : "";
+            const isPos = changeStr.startsWith("+");
+            const isNeg = changeStr.startsWith("-");
+            const isFifthOfFive = kpis.length === 5 && idx === 4;
 
             return (
-              <div key={idx} className="min-w-0">
-                <div className="text-[10px] text-[#5A5E66] font-medium uppercase tracking-wider mb-1 truncate">
+              <div
+                key={idx}
+                className={`bg-[#151921] border border-[#222734] rounded-lg p-3.5 sm:p-4 hover:border-[#2C3547] transition-all shadow-xs flex flex-col justify-between ${
+                  isFifthOfFive ? "col-span-2 sm:col-span-1 lg:col-span-1" : ""
+                }`}
+              >
+                <div className="text-[11px] text-[#94A3B8] font-semibold uppercase tracking-wider truncate mb-1">
                   {kpi.label}
                 </div>
-                <div className="text-[20px] font-semibold text-[#E0E2E6] tracking-tight font-mono leading-none">
+                <div className="text-[22px] sm:text-[25px] font-bold text-[#FFFFFF] tracking-tight font-mono my-1 leading-tight">
                   {formatKpiDisplay(kpi.value)}
                 </div>
-                {kpi.change && (
-                  <div
-                    className={`text-[11px] mt-1.5 leading-tight ${
-                      isPos
-                        ? "text-[#3EBD93]"
-                        : isNeg
-                        ? "text-[#E06C75]"
-                        : "text-[#5A5E66]"
-                    }`}
-                  >
-                    {kpi.change}
+                {changeStr ? (
+                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                    <span
+                      className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10.5px] font-semibold border ${
+                        isPos
+                          ? "text-[#10B981] bg-[#10B981]/10 border-[#10B981]/25"
+                          : isNeg
+                          ? "text-[#EF4444] bg-[#EF4444]/10 border-[#EF4444]/25"
+                          : "text-[#94A3B8] bg-[#1E2534] border-[#2A3446]"
+                      }`}
+                    >
+                      {isPos ? (
+                        <ArrowUpRight size={11} />
+                      ) : isNeg ? (
+                        <ArrowDownRight size={11} />
+                      ) : null}
+                      <span>{changeStr}</span>
+                    </span>
                     {kpi.description && (
-                      <span className="text-[#3E424B] ml-1.5">
-                        · {kpi.description}
+                      <span className="text-[11px] text-[#94A3B8] leading-tight">
+                        {kpi.description}
                       </span>
                     )}
                   </div>
+                ) : (
+                  kpi.description && (
+                    <div className="text-[11px] text-[#94A3B8] leading-tight mt-0.5">
+                      {kpi.description}
+                    </div>
+                  )
                 )}
               </div>
             );
@@ -1578,16 +1632,17 @@ export default function InteractiveDashboard({ spec }) {
         </div>
       )}
 
-      {/* ── Insights ── */}
+      {/* ── Key Insights Banner ── */}
       {insights.length > 0 && (
-        <div className="mb-6">
-          <div className="text-[10px] text-[#5A5E66] font-medium uppercase tracking-wider mb-2">
-            Key Insights
+        <div className="bg-[#131720]/80 border border-[#202734] rounded-lg p-3.5 px-4">
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#94A3B8] mb-2">
+            <Sparkles size={12} className="text-[#10B981]" />
+            <span>Key Findings</span>
           </div>
-          <ul className="space-y-1 text-[12.5px] text-[#8B8F98] leading-relaxed">
+          <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1.5 text-[12px] text-[#E2E8F0]">
             {insights.map((insight, idx) => (
-              <li key={idx} className="flex items-start gap-2">
-                <span className="mt-[7px] w-1 h-1 rounded-full bg-[#4A4E58] shrink-0" />
+              <li key={idx} className="flex items-start gap-2.5 leading-relaxed">
+                <span className="mt-[7px] w-1.5 h-1.5 rounded-full bg-[#10B981] shrink-0" />
                 <span>{insight}</span>
               </li>
             ))}
@@ -1597,17 +1652,17 @@ export default function InteractiveDashboard({ spec }) {
 
       {/* ── Standalone Sliders Section ── */}
       {activeSliders.length > 0 && (
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-2.5">
-            <div className="text-[10px] text-[#5A5E66] font-medium uppercase tracking-wider flex items-center gap-1.5">
-              <SlidersHorizontal size={11} className="text-[#5B8DEF]" />
-              <span>Interactive Filter Sliders</span>
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[10.5px] text-[#8C93A0] font-semibold uppercase tracking-wider flex items-center gap-1.5">
+              <SlidersHorizontal size={12} className="text-[#10B981]" />
+              <span>Interactive Filters</span>
             </div>
             {Object.keys(sliderValues).length > 0 && (
               <button
                 type="button"
                 onClick={() => setSliderValues({})}
-                className="text-[10px] text-[#5B8DEF] hover:underline cursor-pointer"
+                className="text-[10.5px] text-[#10B981] hover:underline cursor-pointer font-medium"
               >
                 Reset All Filters
               </button>
@@ -1644,13 +1699,13 @@ export default function InteractiveDashboard({ spec }) {
         </div>
       )}
 
-      {/* ── Charts ── */}
+      {/* ── Charts Grid ── */}
       {filteredCharts.length > 0 && (
-        <div className={`grid gap-5 ${gridCols}`}>
+        <div className={`grid gap-4 ${gridCols}`}>
           {filteredCharts.map((chart, idx) => (
             <div
               key={chart.id || idx}
-              className="bg-[#12141A] rounded px-4 py-4"
+              className="bg-[#151921] border border-[#222734] rounded-lg p-4 sm:p-4.5 hover:border-[#2C3547] transition-all shadow-xs"
             >
               <ChartCard
                 chart={chart}
@@ -1668,10 +1723,10 @@ export default function InteractiveDashboard({ spec }) {
     <>
       {/* Inline dashboard (only rendered when NOT expanded to avoid duplicate map instances) */}
       {!isFullscreen ? (
-        <div className="my-5 pt-5 border-t border-[#1E2128]">{body(false)}</div>
+        <div className="my-5 pt-5 border-t border-[#202734]">{body(false)}</div>
       ) : (
-        <div className="my-5 pt-5 border-t border-[#1E2128]">
-          <div className="p-4 rounded border border-dashed border-[#262A32] bg-[#12141A]/50 text-center text-[12px] text-[#6B7075]">
+        <div className="my-5 pt-5 border-t border-[#202734]">
+          <div className="p-4 rounded-lg border border-dashed border-[#222734] bg-[#151921]/50 text-center text-[12px] text-[#8C93A0]">
             Dashboard is open in expanded view
           </div>
         </div>
@@ -1680,15 +1735,18 @@ export default function InteractiveDashboard({ spec }) {
       {/* Fullscreen overlay portaled to document.body */}
       {isFullscreen &&
         createPortal(
-          <div className="fixed inset-0 z-[9999] bg-[#0A0C10] overflow-y-auto animate-in fade-in duration-150">
-            <div className="max-w-6xl mx-auto px-6 py-8 relative">
-              <button
-                onClick={() => setIsFullscreen(false)}
-                className="absolute top-6 right-6 p-2 rounded-lg bg-[#14161C] border border-[#262A32] text-[#6B7075] hover:text-[#D0D3D8] hover:bg-[#1E2128] transition-all shadow-md z-10 cursor-pointer"
-                title="Close (Esc)"
-              >
-                <X size={16} />
-              </button>
+          <div className="fixed inset-0 z-[9999] bg-[#0D1017] overflow-y-auto animate-in fade-in duration-150">
+            <div className="max-w-[1400px] mx-auto px-6 sm:px-10 py-6 sm:py-8 relative">
+              <div className="flex justify-end mb-4">
+                <button
+                  onClick={() => setIsFullscreen(false)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#151921] border border-[#222734] text-[#8C93A0] hover:text-white hover:bg-[#1E2534] transition-all shadow-md cursor-pointer text-[12px] font-medium"
+                  title="Close (Esc)"
+                >
+                  <X size={15} />
+                  <span>Exit Fullscreen</span>
+                </button>
+              </div>
               {body(true)}
             </div>
           </div>,
