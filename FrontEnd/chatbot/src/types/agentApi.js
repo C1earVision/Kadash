@@ -48,6 +48,8 @@
  * @property {AgentStep[]} [steps]
  * @property {string} [source_id]
  * @property {string} [source_name]
+ * @property {boolean} [source_fallback]
+ * @property {string} [source_requested_id]
  */
 
 /**
@@ -73,5 +75,10 @@ export function normalizeQueryResponse(data) {
     steps: Array.isArray(raw.steps) ? /** @type {AgentStep[]} */ (raw.steps) : [],
     source_id: typeof raw.source_id === "string" ? raw.source_id : undefined,
     source_name: typeof raw.source_name === "string" ? raw.source_name : undefined,
+    source_fallback: raw.source_fallback === true,
+    source_requested_id:
+      typeof raw.source_requested_id === "string"
+        ? raw.source_requested_id
+        : undefined,
   };
 }

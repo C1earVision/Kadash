@@ -48,7 +48,14 @@ import {
   generateChatTitle
 } from "../lib/chatStorage";
 import { normalizeQueryResponse } from "../types/agentApi";
+import {
+  DEFAULT_SOURCE,
+  fetchServerDataSources,
+  reconcileSourceWithServer,
+  sourceFromQueryResponse,
+} from "../lib/dataSourceSync";
 import { streamAgentQuery } from "../lib/queryStream";
+import { authHeaders, getStoredAuth } from "../lib/auth";
 
 /* ─── URL normaliser (unchanged logic) ─── */
 function normalizeVisualizationUrl(imageUrl) {
@@ -342,6 +349,7 @@ const PROMPT_SUGGESTIONS = [
    ════════════════════════════════════════════════════════════════ */
 function ChatView({
   activeSource,
+  onSelectSource,
   onOpenSourceModal,
   selectedModel,
   messages,
@@ -459,8 +467,8 @@ function ChatView({
     abortControllerRef.current = new AbortController();
 
     try {
-      const user = JSON.parse(localStorage.getItem("user"));
-      if (!user) {
+      const session = getStoredAuth();
+      if (!session) {
         setMessages((prev) => {
           const filtered = prev.filter((msg) => !msg.isLoading);
           return [...filtered, { role: "AI_Message", content: "Please log in first to use the agent." }];
@@ -470,10 +478,7 @@ function ChatView({
       }
 
       const payLoad = {
-        question:
-          JSON.parse(localStorage.getItem("messages")).join(" ") +
-          ` token:${user.token}`,
-        admin: user.user.AdminState,
+        question: JSON.parse(localStorage.getItem("messages")).join(" "),
         source_id: activeSource?.source_id,
         model_id: selectedModel || null,
       };
@@ -491,6 +496,7 @@ function ChatView({
 
       await streamAgentQuery(AI_API_URL, payLoad, {
         signal: abortControllerRef.current.signal,
+        headers: authHeaders(),
         onEvent: (type, data) => {
           if (type === "thinking_delta" && data.text) {
             streamThinking += data.text;
@@ -548,6 +554,12 @@ function ChatView({
         throw new Error("No response from agent stream");
       }
 
+      const resolvedSource = sourceFromQueryResponse(payload);
+      const sessionSource = resolvedSource || activeSource;
+      if (resolvedSource && onSelectSource) {
+        onSelectSource(resolvedSource);
+      }
+
       const imageUrl = normalizeVisualizationUrl(payload.image);
       const aiMessage = {
         role: "AI_Message",
@@ -576,7 +588,7 @@ function ChatView({
           id: sessionId,
           title,
           createdAt: new Date().toISOString(),
-          source: activeSource,
+          source: sessionSource,
           modelId: selectedModel,
           messages: finalMessages,
           contextMessages: updatedMessages,
@@ -912,7 +924,9 @@ export default function App() {
   useEffect(() => {
     const fetchModels = async () => {
       try {
-        const res = await axios.get(`${AI_API_URL}/models`);
+        const res = await axios.get(`${AI_API_URL}/models`, {
+          headers: authHeaders(),
+        });
         if (res.data?.models) {
           setAvailableModels(res.data.models);
           // If no model is selected yet, default to the first one (Ollama local)
@@ -947,27 +961,58 @@ export default function App() {
   };
 
   const handleSelectSource = (source) => {
-    setActiveSource(source);
+    const next = source?.source_id ? source : DEFAULT_SOURCE;
+    setActiveSource(next);
     try {
-      localStorage.setItem("activeSource", JSON.stringify(source));
+      localStorage.setItem("activeSource", JSON.stringify(next));
     } catch (e) {
       console.error("Failed to save activeSource:", e);
     }
   };
+
+  const syncActiveSourceWithServer = async (preferred) => {
+    try {
+      const serverList = await fetchServerDataSources();
+      const base = preferred || activeSource;
+      const reconciled = reconcileSourceWithServer(base, serverList);
+      if (reconciled.source_id !== (base?.source_id || "default")) {
+        console.info(
+          "[DataSource] Stale connection reset:",
+          base?.source_id,
+          "→",
+          reconciled.source_id
+        );
+      }
+      handleSelectSource(reconciled);
+      return { serverList, reconciled };
+    } catch (err) {
+      console.error("Failed to sync data source with server:", err);
+      return { serverList: [], reconciled: activeSource };
+    }
+  };
+
+  useEffect(() => {
+    syncActiveSourceWithServer(
+      JSON.parse(localStorage.getItem("activeSource") || "null")
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSaveChatSession = (session) => {
     const updated = saveChatSession(session);
     setRecentChats(updated);
   };
 
-  const handleSelectChat = (chat) => {
+  const handleSelectChat = async (chat) => {
     setCurrentChatId(chat.id);
     setMessages(chat.messages || []);
     if (chat.contextMessages) {
       localStorage.setItem("messages", JSON.stringify(chat.contextMessages));
     }
     if (chat.source) {
-      handleSelectSource(chat.source);
+      await syncActiveSourceWithServer(chat.source);
+    } else {
+      await syncActiveSourceWithServer(activeSource);
     }
     if (chat.modelId) {
       setSelectedModel(chat.modelId);
@@ -1277,6 +1322,7 @@ export default function App() {
         {page === "agent" ? (
           <ChatView
             activeSource={activeSource}
+            onSelectSource={handleSelectSource}
             onOpenSourceModal={() => setIsSourceModalOpen(true)}
             selectedModel={selectedModel}
             messages={messages}
@@ -1292,6 +1338,7 @@ export default function App() {
           <DataExplorer
             activeSource={activeSource}
             onOpenSourceModal={() => setIsSourceModalOpen(true)}
+            onSourceInvalid={() => syncActiveSourceWithServer()}
             isSidebarOpen={isSidebarOpen}
             onToggleSidebar={toggleSidebar}
           />

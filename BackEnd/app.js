@@ -24,6 +24,7 @@ const allowedOrigins = [
   'https://Veyra-chi.vercel.app',
   'http://localhost:5173',
   'http://localhost:3000',
+  'http://localhost:9001'
 ];
 
 app.use(cors({
@@ -32,14 +33,20 @@ app.use(cors({
     if (allowedOrigins.indexOf(origin) !== -1 || /\.vercel\.app$/.test(origin)) {
       return callback(null, true);
     }
-    return callback(null, true);
+    return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-
+const apiLimiter = rateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/v1', apiLimiter);
 
 //routes
 app.use('/api/v1', noAuthRoutes)

@@ -8,11 +8,9 @@ const auth = async (req,res,next)=>{
     throw new CustomAPIError('Unothorized Access', StatusCodes.UNAUTHORIZED)
   }
   const token = authHeader.split(' ')[1]
-  console.log(token)
   try {
     const payLoad = jwt.verify(token, process.env.JWT_SECRET)
     req.user = {admin:payLoad.admin , customerId:payLoad.customerId, name:payLoad.name}
-    console.log(req.user)
     next()
   } catch (error) {
     throw new CustomAPIError('Authorization Error', StatusCodes.UNAUTHORIZED)

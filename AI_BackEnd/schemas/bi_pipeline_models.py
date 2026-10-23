@@ -43,7 +43,10 @@ class BusinessQuestionsOutput(BaseModel):
         description="One-sentence summary of what the user is asking for"
     )
     is_single_chart: bool = Field(
-        description="True if the user wants a single chart, false for a full dashboard"
+        description=(
+            "True when the user wants ONE visualization only: a single chart, a data table, "
+            "or a focused question answerable with one chart/table — NOT a multi-page dashboard"
+        )
     )
     questions: List[BusinessQuestion] = Field(
         description="The decomposed business questions (1-8 questions)"
@@ -90,12 +93,49 @@ class ChartDataKeySpec(BaseModel):
     color: Optional[str] = None
 
 
+class SingleChartPlan(BaseModel):
+    """Output of the Single Chart / Table Agent — one SQL query + one visualization."""
+
+    title: str = Field(description="Chart or table title shown in the UI")
+    description: str = Field(description="Short subtitle explaining what is shown")
+    chart_type: Literal["table", "area", "line", "bar", "donut", "pie", "map"] = Field(
+        description="Visualization type; use 'table' when the user asked for tabular output"
+    )
+    sql: str = Field(description="Single SELECT query to populate the visualization")
+    xAxisKey: str = Field(
+        description="Primary category/label column (first column for tables when applicable)"
+    )
+    dataKeys: List[ChartDataKeySpec] = Field(
+        description=(
+            "Metric columns for charts. For type=table, include every column to display "
+            "(key=column name, name=human label)."
+        )
+    )
+    include_slider: bool = Field(
+        default=False,
+        description="True to add an interactive threshold slider for this visualization",
+    )
+    slider_filter_key: Optional[str] = Field(
+        default=None,
+        description="Numeric column in the query result filtered by the slider",
+    )
+    slider_label: Optional[str] = None
+    slider_unit: Optional[str] = None
+    slider_operator: Literal[">=", "<=", ">", "<", "=="] = ">="
+    summary: str = Field(
+        description=(
+            "Markdown with '### Key Takeaways' (2-4 bullets with numbers) and "
+            "optional '### Recommendations' (1-2 bullets). No dashboard layout prose."
+        )
+    )
+
+
 class ChartSpec(BaseModel):
     """A fully populated chart for the frontend."""
     id: str
     title: str
     description: str
-    type: Literal["area", "line", "bar", "donut", "pie", "map", "slider"]
+    type: Literal["area", "line", "bar", "donut", "pie", "map", "slider", "table"]
     xAxisKey: str
     dataKeys: List[ChartDataKeySpec]
     data: List[Dict[str, Any]]

@@ -92,6 +92,7 @@ async def run_query(
     use_agent_fn,
     request=None,
     cancel_scope: Optional[QueryCancelScope] = None,
+    is_admin: bool = False,
 ) -> QueryResponse:
     router_model = _resolve_router_model(query.model_id)
     router_provider = "gemini" if router_model and "gemini" in router_model.lower() else "groq"
@@ -127,7 +128,7 @@ async def run_query(
             cancel_scope=cancel_scope,
         )
     elif agent_choice == "use_crud_agent":
-        if query.admin:
+        if is_admin:
             specialist_run = await use_agent_fn(
                 messages,
                 build_specialist_graph(agent_choice, query, active_db),
@@ -137,7 +138,7 @@ async def run_query(
         else:
             final_raw = "User has no access to this information"
     elif agent_choice == "use_data_analysis_and_visualization_agent":
-        if query.admin:
+        if is_admin:
             # Use the new multi-agent BI pipeline
             tables = active_source.get("tables", []) if active_source else []
             if active_db and not tables:
@@ -184,6 +185,7 @@ async def run_query_stream(
     emit: EmitFn,
     request=None,
     cancel_scope: Optional[QueryCancelScope] = None,
+    is_admin: bool = False,
 ) -> QueryResponse:
     router_model = _resolve_router_model(query.model_id)
     router_provider = "gemini" if router_model and "gemini" in router_model.lower() else "groq"
@@ -219,7 +221,7 @@ async def run_query_stream(
     specialist_messages = None
 
     needs_admin = agent_choice in ("use_crud_agent", "use_data_analysis_and_visualization_agent")
-    if needs_admin and not query.admin:
+    if needs_admin and not is_admin:
         final_raw = "User has no access to this information"
     elif agent_choice == "use_data_analysis_and_visualization_agent":
         # Use the new multi-agent BI pipeline (has its own streaming via emit)

@@ -24,7 +24,13 @@ const Login = () => {
       localStorage.setItem('user', JSON.stringify(user.data));
       navigate('/agent');
     } catch (err) {
-      setError('Invalid email or password.');
+      const msg =
+        err.response?.data?.msg ||
+        err.response?.data?.message ||
+        (err.response?.status === 403
+          ? 'Access restricted to business owners / administrators.'
+          : null);
+      setError(msg || 'Invalid email or password.');
       console.error('Error logging in:', err);
     } finally {
       setIsLoading(false);

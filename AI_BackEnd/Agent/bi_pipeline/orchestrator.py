@@ -1,10 +1,15 @@
 """BI Pipeline Orchestrator — 3-agent pipeline with streaming.
 
-Pipeline flow:
+Pipeline flow (full dashboard):
   Agent 1 (Question Planner, local model) → user query → business questions
   Agent 2 (SQL Engineer, strong model)    → questions + schema → SQL queries
   Python  (parallel SQL execution)        → SQL → result data
   Agent 3 (Dashboard Assembler, local)    → data → final DashboardSpec
+
+Single-chart / table branch (when is_single_chart):
+  Agent 1 (Question Planner)              → confirms focused intent
+  Single Chart Agent (strong model)       → SQL + one chart/table spec
+  Python  (SQL execution + assembly)      → minimal 1-page DashboardSpec
 
 Each agent uses `with_structured_output()` for Pydantic-validated JSON.
 The entire thought process is streamed to the frontend via SSE events.
@@ -25,12 +30,18 @@ from Agent.bi_pipeline.schema_context import build_schema_context
 from Prompt.bi_pipeline.question_planner_prompt import QUESTION_PLANNER_PROMPT
 from Prompt.bi_pipeline.sql_engineer_prompt import SQL_ENGINEER_PROMPT
 from Prompt.bi_pipeline.dashboard_assembler_prompt import DASHBOARD_ASSEMBLER_PROMPT
+from Prompt.bi_pipeline.single_chart_prompt import SINGLE_CHART_PROMPT
 from schemas.bi_pipeline_models import (
     AnalyticalIntent,
     BusinessQuestion,
     BusinessQuestionsOutput,
+    ChartDataKeySpec,
+    ChartSpec,
+    DashboardPageSpec,
     ExecutedQuery,
     FinalDashboardOutput,
+    SingleChartPlan,
+    SliderSpec,
     SQLQueriesOutput,
     SQLQuerySpec,
 )
@@ -55,6 +66,8 @@ MAX_RATE_LIMIT_RETRIES = 5
 MAX_DATA_ROWS_PER_QUERY = 12
 # Maximum total characters of executed queries JSON for dashboard assembler (stay well under 7,000 ITPM)
 MAX_ASSEMBLER_CONTEXT_CHARS = 4_500
+MAX_SINGLE_CHART_ROWS = 50
+MAX_SINGLE_TABLE_ROWS = 100
 
 
 # ─── Model Helpers ────────────────────────────────────────────────────────────
@@ -650,6 +663,315 @@ def _sanitize_chart_data_and_axis(chart: ChartSpec) -> tuple[str, list[dict]]:
     return x_key, rows
 
 
+# ─── Single Chart / Table Pipeline ───────────────────────────────────────────
+
+_DASHBOARD_SCOPE_KEYWORDS = (
+    "dashboard", "overview", "executive report", "full report", "comprehensive",
+    "multi-page", "business report", "full analysis", "deep dive across",
+)
+_TABLE_SCOPE_KEYWORDS = (
+    "table", "tabular", "in a table", "as a table", "records list", "list of",
+    "show me the rows", "data table",
+)
+
+
+def _should_use_single_chart_pipeline(
+    user_query: str,
+    questions_output: BusinessQuestionsOutput,
+) -> bool:
+    """Route to the dedicated single-chart agent instead of the full dashboard pipeline."""
+    q_lower = user_query.lower()
+    if any(kw in q_lower for kw in _DASHBOARD_SCOPE_KEYWORDS):
+        return False
+    if questions_output.is_single_chart:
+        return True
+    if any(kw in q_lower for kw in _TABLE_SCOPE_KEYWORDS):
+        return True
+    if len(questions_output.questions) <= 1:
+        return True
+    if len(questions_output.questions) <= 2 and not any(
+        kw in q_lower for kw in (" and also ", "multiple", "several charts")
+    ):
+        return True
+    return False
+
+
+def _execute_sql_for_plan(db, plan: SingleChartPlan) -> ExecutedQuery:
+    """Run the single-chart agent's SQL and wrap as ExecutedQuery."""
+    spec = SQLQuerySpec(
+        question_id="single",
+        sql=plan.sql,
+        explanation=plan.description,
+    )
+    question = BusinessQuestion(
+        id="single",
+        question=plan.title,
+        intent=AnalyticalIntent.KPI,
+        relevant_tables=[],
+    )
+    return _execute_single_query(db, spec, question)
+
+
+def _infer_data_keys_for_table(
+    columns: List[str],
+    x_axis: str,
+    planned_keys: List[ChartDataKeySpec],
+) -> List[ChartDataKeySpec]:
+    """Ensure table visualizations expose all result columns."""
+    planned_by_key = {dk.key: dk for dk in planned_keys}
+    keys: List[ChartDataKeySpec] = []
+    for col in columns:
+        if col == x_axis:
+            continue
+        if col in planned_by_key:
+            keys.append(planned_by_key[col])
+        else:
+            keys.append(ChartDataKeySpec(
+                key=col,
+                name=col.replace("_", " ").title(),
+            ))
+    if not keys and columns:
+        for col in columns:
+            if col != x_axis:
+                keys.append(ChartDataKeySpec(
+                    key=col,
+                    name=col.replace("_", " ").title(),
+                ))
+    return keys
+
+
+def _build_slider_for_plan(
+    plan: SingleChartPlan,
+    chart_data: List[Dict[str, Any]],
+    chart_id: str,
+) -> Optional[SliderSpec]:
+    if not plan.include_slider or not plan.slider_filter_key or not chart_data:
+        return None
+    filter_key = plan.slider_filter_key
+    nums = [
+        float(r[filter_key])
+        for r in chart_data
+        if isinstance(r.get(filter_key), (int, float))
+    ]
+    if len(nums) < 2:
+        return None
+    min_v, max_v = float(min(nums)), float(max(nums))
+    if min_v == max_v:
+        return None
+    return SliderSpec(
+        id=f"slider_{filter_key}",
+        label=plan.slider_label or f"{filter_key.replace('_', ' ').title()} Filter",
+        description=f"Filter rows where {filter_key} {plan.slider_operator} selected value",
+        filterKey=filter_key,
+        sliderMin=min_v,
+        sliderMax=max_v,
+        sliderStep=max(1.0, round((max_v - min_v) / 25.0, 2)),
+        defaultValue=min_v,
+        sliderUnit=plan.slider_unit,
+        targetScope="chart",
+        targetChartIds=[chart_id],
+        operator=plan.slider_operator,
+    )
+
+
+def _normalize_single_chart_content(summary: str) -> str:
+    text = (summary or "").strip()
+    if not text:
+        return (
+            "### Key Takeaways\n"
+            "- Visualization generated from your query.\n\n"
+            "### Recommendations\n"
+            "- Adjust filters or ask a follow-up for more detail."
+        )
+    if "### Key Takeaways" not in text:
+        text = "### Key Takeaways\n" + text
+    return text
+
+
+def _plan_to_final_dashboard(
+    user_query: str,
+    plan: SingleChartPlan,
+    executed: ExecutedQuery,
+) -> FinalDashboardOutput:
+    """Build a minimal one-page dashboard from a SingleChartPlan and query results."""
+    max_rows = MAX_SINGLE_TABLE_ROWS if plan.chart_type == "table" else MAX_SINGLE_CHART_ROWS
+    chart_data = [dict(r) for r in (executed.data or [])[:max_rows]]
+
+    x_key = plan.xAxisKey
+    if chart_data and x_key not in chart_data[0] and executed.columns:
+        x_key = executed.columns[0]
+
+    data_keys = plan.dataKeys
+    if plan.chart_type == "table":
+        data_keys = _infer_data_keys_for_table(executed.columns, x_key, plan.dataKeys)
+
+    chart = ChartSpec(
+        id="chart_single",
+        title=plan.title,
+        description=plan.description,
+        type=plan.chart_type,
+        xAxisKey=x_key,
+        dataKeys=data_keys,
+        data=chart_data,
+    )
+    clean_x_key, clean_data = _sanitize_chart_data_and_axis(chart)
+    chart = chart.model_copy(update={"xAxisKey": clean_x_key, "data": clean_data})
+
+    if chart.type == "map":
+        from Utils.geo_lookup import enrich_rows_with_coordinates
+        enriched, lat_k, lng_k, auto_lbl = enrich_rows_with_coordinates(
+            clean_data, preferred_loc_col=clean_x_key
+        )
+        chart = chart.model_copy(update={
+            "data": enriched,
+            "latKey": lat_k,
+            "lngKey": lng_k,
+            "markerLabel": auto_lbl or clean_x_key,
+            "valueKey": data_keys[0].key if data_keys else None,
+        })
+
+    page_sliders: List[SliderSpec] = []
+    slider = _build_slider_for_plan(plan, clean_data, chart.id)
+    if slider:
+        page_sliders.append(slider)
+
+    page = DashboardPageSpec(
+        id="single_view",
+        name=plan.title[:48] or "Analysis",
+        icon="analytics",
+        summary=plan.description or user_query[:120],
+        insights=[],
+        kpis=[],
+        charts=[chart],
+        sliders=page_sliders or None,
+    )
+
+    return FinalDashboardOutput(
+        dashboard_title=plan.title,
+        dashboard_subtitle=plan.description or user_query[:160],
+        content=_normalize_single_chart_content(plan.summary),
+        pages=[page],
+    )
+
+
+async def _run_single_chart_pipeline(
+    user_query: str,
+    db,
+    schema_context: str,
+    *,
+    model_id: Optional[str] = None,
+    emit: Optional[EmitFn] = None,
+    cancel_scope: Optional[QueryCancelScope] = None,
+    all_steps: Optional[List[AgentStep]] = None,
+    pipeline_start: Optional[float] = None,
+) -> QueryResponse:
+    """Dedicated agent path: one SQL query → one chart or table (optional slider)."""
+    steps = all_steps if all_steps is not None else []
+    t0 = pipeline_start if pipeline_start is not None else time.time()
+
+    print(f"\n[BI Pipeline] ── SINGLE CHART / TABLE BRANCH ──")
+    if emit:
+        await emit("status", {
+            "phase": "single_chart_agent",
+            "text": "Planning single chart or table…",
+        })
+
+    strong_llm = _get_strong_model(model_id)
+    agent_prompt = SINGLE_CHART_PROMPT.format(
+        schema_context=schema_context,
+        user_query=user_query,
+    )
+
+    agent_start = time.time()
+    plan: SingleChartPlan = await _invoke_structured_agent(
+        llm=strong_llm,
+        output_schema=SingleChartPlan,
+        system_prompt=agent_prompt,
+        user_message=user_query,
+        phase="single_chart_agent",
+        emit=emit,
+        cancel_scope=cancel_scope,
+    )
+    print(
+        f"[BI Pipeline] Single Chart Agent done ({time.time() - agent_start:.1f}s): "
+        f"type={plan.chart_type}, slider={plan.include_slider}"
+    )
+
+    steps.append(AgentStep(
+        type="tool_call",
+        label="Single Chart SQL",
+        detail=plan.sql[:800],
+    ))
+    if emit:
+        await emit("step", {"step": steps[-1].model_dump(), "phase": "single_chart_agent"})
+
+    if emit:
+        await emit("status", {"phase": "sql_execution", "text": "Running query…"})
+
+    executed = _execute_sql_for_plan(db, plan)
+
+    if executed.error:
+        print(f"[BI Pipeline] Single chart SQL failed: {executed.error}")
+        retry_prompt = agent_prompt + (
+            f"\n\nPREVIOUS SQL FAILED:\n{plan.sql}\n\nERROR:\n{executed.error}\n\n"
+            "Return corrected SQL and the same visualization plan."
+        )
+        try:
+            plan = await _invoke_structured_agent(
+                llm=strong_llm,
+                output_schema=SingleChartPlan,
+                system_prompt=retry_prompt,
+                user_message="Fix the SQL and return the visualization plan.",
+                phase="single_chart_agent",
+                emit=emit,
+                cancel_scope=cancel_scope,
+            )
+            executed = _execute_sql_for_plan(db, plan)
+        except Exception as retry_err:
+            print(f"[BI Pipeline] Single chart SQL retry failed: {retry_err}")
+
+    if executed.error or executed.row_count == 0:
+        detail = executed.error or "Query returned no rows."
+        return QueryResponse(
+            answer=(
+                "I couldn't retrieve data for that chart or table. "
+                f"{detail[:300]}"
+            ),
+            agent="use_data_analysis_and_visualization_agent",
+            steps=steps,
+        )
+
+    steps.append(AgentStep(
+        type="tool_result",
+        label="Single Chart Result",
+        detail=f"{executed.row_count} rows × {len(executed.columns)} columns",
+    ))
+    if emit:
+        await emit("step", {"step": steps[-1].model_dump(), "phase": "sql_execution"})
+
+    if emit:
+        await emit("status", {
+            "phase": "single_chart_assembly",
+            "text": "Assembling visualization…",
+        })
+
+    dashboard_output = _plan_to_final_dashboard(user_query, plan, executed)
+    dashboard_spec = _to_dashboard_spec(dashboard_output)
+
+    total_time = time.time() - t0
+    print(
+        f"[BI Pipeline] === SINGLE CHART COMPLETE ({total_time:.1f}s) — "
+        f"1 page, 1 chart, type={plan.chart_type} ==="
+    )
+
+    return QueryResponse(
+        answer=dashboard_output.content,
+        agent="use_data_analysis_and_visualization_agent",
+        dashboard=dashboard_spec,
+        steps=steps,
+    )
+
+
 def _to_dashboard_spec(output: FinalDashboardOutput) -> DashboardSpec:
     """Convert the pipeline's FinalDashboardOutput to the existing DashboardSpec."""
     pages = []
@@ -904,15 +1226,19 @@ def _build_fallback_dashboard_output(
                 ))
                 break
 
+    single_mode = questions_output.is_single_chart
+    page_charts = charts[:1] if single_mode else charts[:4]
+    page_kpis = [] if single_mode else kpis[:4]
+
     pages.append(DashboardPageSpec(
-        id="overview",
-        name="Executive Overview",
-        icon="overview",
+        id="overview" if not single_mode else "single_view",
+        name="Executive Overview" if not single_mode else (page_charts[0].title[:48] if page_charts else "Analysis"),
+        icon="overview" if not single_mode else "analytics",
         summary=f"Analysis overview for: {user_query}",
-        insights=insights,
-        kpis=kpis[:4],
-        charts=charts[:4],
-        sliders=fallback_sliders if fallback_sliders else None,
+        insights=[] if single_mode else insights,
+        kpis=page_kpis,
+        charts=page_charts,
+        sliders=fallback_sliders if fallback_sliders and not single_mode else None,
     ))
 
     takeaways = [
@@ -1069,6 +1395,18 @@ async def run_bi_pipeline(
             "step": all_steps[-1].model_dump(),
             "phase": "question_planner",
         })
+
+    if _should_use_single_chart_pipeline(user_query, questions_output):
+        return await _run_single_chart_pipeline(
+            user_query,
+            db,
+            schema_context,
+            model_id=model_id,
+            emit=emit,
+            cancel_scope=cancel_scope,
+            all_steps=all_steps,
+            pipeline_start=pipeline_start,
+        )
 
     # ── Agent 2: SQL Engineer (strong model) ─────────────────────────────
     print(f"\n[BI Pipeline] ── STEP 2: SQL Engineer (strong model) ──")

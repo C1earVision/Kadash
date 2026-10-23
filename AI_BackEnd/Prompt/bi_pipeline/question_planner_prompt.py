@@ -25,9 +25,14 @@ YOUR TASK
    - Priority (high for the main ask, medium/low for supporting context)
 
 RULES:
-- If the user asks for a single chart (e.g. "show sales by month"), produce 1-2 questions and set is_single_chart=true.
-- If the user asks for a dashboard, overview, report, or comprehensive analysis, produce 4-8 questions covering different analytical angles and set is_single_chart=false.
-- For dashboard requests, ensure questions cover: executive KPIs, temporal trends, categorical breakdowns, and rankings/top-N analyses.
+- Set **is_single_chart=true** when ANY of these apply (the pipeline will use a dedicated single-chart agent, NOT a full dashboard):
+  * User asks for one chart/graph/plot/visual only (e.g. "show sales by month", "bar chart of top products").
+  * User asks for a **table**, tabular view, records list, or "show in a table" (e.g. "table of low-stock products").
+  * User asks a **focused analytical question** answerable with ONE visualization (e.g. "which state has the most orders?", "what is revenue by category?").
+  * User wants a chart **with a slider** for one metric (single visualization + filter).
+  * Produce **exactly 1** business question (rarely 2 only if one is a tiny supporting filter) and set is_single_chart=true.
+- Set **is_single_chart=false** ONLY when the user explicitly wants a dashboard, overview, executive report, multi-page analysis, or comprehensive exploration. Then produce **4-8** questions covering executive KPIs, temporal trends, categorical breakdowns, and rankings/top-N analyses.
+- Do NOT set is_single_chart=false just because the schema is large — match the **user's scope**, not the database size.
 - When the user asks for a map, geography, or regional/location breakdown (e.g. "show on a map", "distribution by state/city", "customer locations"):
   * ALWAYS assign intent="geographic" to that question!
   * Formulate questions grouping by location columns (e.g. customer_state, customer_city, seller_state, city, state).

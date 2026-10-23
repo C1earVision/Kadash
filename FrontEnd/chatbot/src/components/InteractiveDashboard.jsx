@@ -932,8 +932,8 @@ function SliderChart({ chart, height = 290 }) {
 
 /* ─── Chart Card ─── */
 function ChartCard({ chart, onExpand, expanded = false }) {
-  const [view, setView] = useState("chart");
   const type = (chart.type || "bar").toLowerCase();
+  const [view, setView] = useState(type === "table" ? "table" : "chart");
   const xKey = chart.xAxisKey || "name";
   const data = Array.isArray(chart.data) ? chart.data : [];
 
@@ -941,6 +941,9 @@ function ChartCard({ chart, onExpand, expanded = false }) {
     Array.isArray(chart.dataKeys) && chart.dataKeys.length > 0
       ? chart.dataKeys
       : [{ key: "value", name: chart.metricName || "Value", color: COLORS[0] }];
+
+  const fullTableColumns =
+    type === "table" && data.length > 0 ? Object.keys(data[0]) : null;
 
   const h = expanded ? 420 : (type === "map" ? 310 : 290);
 
@@ -969,6 +972,7 @@ function ChartCard({ chart, onExpand, expanded = false }) {
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0 ml-2">
+          {type !== "table" && (
           <button
             onClick={() => setView((v) => (v === "chart" ? "table" : "chart"))}
             className={`p-1.5 rounded-md transition-colors ${
@@ -984,6 +988,7 @@ function ChartCard({ chart, onExpand, expanded = false }) {
               <BarChart2 size={14} />
             )}
           </button>
+          )}
           {onExpand && (
             <button
               onClick={() => onExpand(chart)}
@@ -1009,15 +1014,28 @@ function ChartCard({ chart, onExpand, expanded = false }) {
               <thead className="bg-[#161B24] text-[#8C93A0] sticky top-0 z-10 border-b border-[#202734]">
                 <tr>
                   <th className="px-2.5 py-1.5 font-semibold uppercase text-[9.5px] tracking-wider w-8">#</th>
-                  <th className="px-2.5 py-1.5 font-semibold uppercase text-[9.5px] tracking-wider">{xKey}</th>
-                  {dataKeys.map((dk) => (
-                    <th
-                      key={dk.key}
-                      className="px-2.5 py-1.5 font-semibold uppercase text-[9.5px] tracking-wider text-right"
-                    >
-                      {dk.name || dk.key}
-                    </th>
-                  ))}
+                  {fullTableColumns ? (
+                    fullTableColumns.map((col) => (
+                      <th
+                        key={col}
+                        className="px-2.5 py-1.5 font-semibold uppercase text-[9.5px] tracking-wider"
+                      >
+                        {col.replace(/_/g, " ")}
+                      </th>
+                    ))
+                  ) : (
+                    <>
+                      <th className="px-2.5 py-1.5 font-semibold uppercase text-[9.5px] tracking-wider">{xKey}</th>
+                      {dataKeys.map((dk) => (
+                        <th
+                          key={dk.key}
+                          className="px-2.5 py-1.5 font-semibold uppercase text-[9.5px] tracking-wider text-right"
+                        >
+                          {dk.name || dk.key}
+                        </th>
+                      ))}
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody className="text-[#CBD5E1] divide-y divide-[#1A202C]">
@@ -1026,25 +1044,47 @@ function ChartCard({ chart, onExpand, expanded = false }) {
                     <td className="px-2.5 py-1.5 text-[#64748B] font-mono text-[10px]">
                       {ri + 1}
                     </td>
-                    <td className="px-2.5 py-1.5 text-[#E2E8F0]">
-                      {formatCellLabel(row[xKey], xKey)}
-                    </td>
-                    {dataKeys.map((dk) => (
-                      <td
-                        key={dk.key}
-                        className="px-2.5 py-1.5 text-right font-mono text-[#F1F3F5]"
-                      >
-                        {typeof row[dk.key] === "number"
-                          ? row[dk.key].toLocaleString(undefined, {
-                              maximumFractionDigits: 2,
-                            })
-                          : String(row[dk.key] ?? "")}
-                      </td>
-                    ))}
+                    {fullTableColumns ? (
+                      fullTableColumns.map((col) => (
+                        <td
+                          key={col}
+                          className="px-2.5 py-1.5 font-mono text-[#F1F3F5] max-w-[200px] truncate"
+                          title={String(row[col] ?? "")}
+                        >
+                          {typeof row[col] === "number"
+                            ? row[col].toLocaleString(undefined, {
+                                maximumFractionDigits: 2,
+                              })
+                            : formatCellLabel(row[col], col)}
+                        </td>
+                      ))
+                    ) : (
+                      <>
+                        <td className="px-2.5 py-1.5 text-[#E2E8F0]">
+                          {formatCellLabel(row[xKey], xKey)}
+                        </td>
+                        {dataKeys.map((dk) => (
+                          <td
+                            key={dk.key}
+                            className="px-2.5 py-1.5 text-right font-mono text-[#F1F3F5]"
+                          >
+                            {typeof row[dk.key] === "number"
+                              ? row[dk.key].toLocaleString(undefined, {
+                                  maximumFractionDigits: 2,
+                                })
+                              : String(row[dk.key] ?? "")}
+                          </td>
+                        ))}
+                      </>
+                    )}
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        ) : type === "table" ? (
+          <div className="h-full flex items-center justify-center text-[12px] text-[#64748B]">
+            Table view — switch to table mode
           </div>
         ) : type === "line" ? (
           <ResponsiveContainer width="100%" height="100%">

@@ -6,6 +6,7 @@ python-dotenv
 streamlit
 uvicorn
 pydantic
+PyJWT
 httpx
 requests
 langchain_google_community

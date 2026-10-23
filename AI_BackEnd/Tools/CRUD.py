@@ -4,6 +4,7 @@ import os
 from DB.connect import dataBaseConnection
 from langchain_tavily import TavilySearch
 import requests
+from Utils.request_context import get_api_bearer_token
 
 
 class databaseCrudOperations:
@@ -76,12 +77,11 @@ class databaseCrudOperations:
                   "category": str,
                   "releaseDate": str (YYYY-MM-DD),
                   "imgs": list of urls (it has to be image urls not any place holder value)             
-                },
-                headers = {
-                  "Authorization": f"Bearer {token}",
-                  "Content-Type": "application/json"
                 }
               ]
+
+          Authentication is attached automatically from the signed-in user session.
+          Do not pass Authorization headers in the request body.
 
           Returns
           -------
@@ -103,11 +103,23 @@ class databaseCrudOperations:
 
 
           try:
-              print("Crud functinon used")
-              print(query)
+              bearer = get_api_bearer_token()
+              if not bearer:
+                  return {"status": "error", "message": "Not authenticated"}
               api_url = os.environ.get("API_URL")
-              print(api_url)
-              response = requests.post(api_url+"/user/admin", json=query[0], headers=query[1]['headers'], timeout=10)
+              if not api_url:
+                  return {"status": "error", "message": "API_URL is not configured"}
+              body = query[0] if isinstance(query, list) and query else query
+              headers = {
+                  "Authorization": f"Bearer {bearer}",
+                  "Content-Type": "application/json",
+              }
+              response = requests.post(
+                  f"{api_url.rstrip('/')}/user/admin",
+                  json=body,
+                  headers=headers,
+                  timeout=10,
+              )
               print(f"response: {response}")
               if response.status_code >= 400:
                   try:

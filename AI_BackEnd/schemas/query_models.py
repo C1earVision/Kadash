@@ -103,6 +103,14 @@ class QueryResponse(BaseModel):
     steps: List[AgentStep] = Field(default_factory=list)
     source_id: Optional[str] = None
     source_name: Optional[str] = None
+    source_fallback: Optional[bool] = Field(
+        default=None,
+        description="True when the requested source_id was unavailable and the default DB was used",
+    )
+    source_requested_id: Optional[str] = Field(
+        default=None,
+        description="Original source_id from the client when source_fallback is true",
+    )
 
 
 def coerce_dashboard(raw: Any) -> Optional[DashboardSpec]:

@@ -2,15 +2,16 @@
  * Consume POST /query/stream (SSE) and dispatch typed events.
  * @param {string} baseUrl
  * @param {Record<string, unknown>} payload
- * @param {{ signal?: AbortSignal, onEvent: (type: string, data: Record<string, unknown>) => void }} handlers
+ * @param {{ signal?: AbortSignal, headers?: Record<string, string>, onEvent: (type: string, data: Record<string, unknown>) => void }} handlers
  */
-export async function streamAgentQuery(baseUrl, payload, { signal, onEvent }) {
+export async function streamAgentQuery(baseUrl, payload, { signal, headers = {}, onEvent }) {
   const url = `${baseUrl.replace(/\/$/, "")}/query/stream`;
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Accept: "text/event-stream",
+      ...headers,
     },
     body: JSON.stringify(payload),
     signal,

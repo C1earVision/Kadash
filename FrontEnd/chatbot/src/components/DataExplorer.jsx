@@ -27,6 +27,7 @@ import {
   PanelLeftOpen
 } from "lucide-react";
 import { AI_API_URL } from "../config/api";
+import { authHeaders } from "../lib/auth";
 
 // Helper to determine whether a cell string contains an image (base64 data URL, image file extension, or visualization path)
 function isImageValue(val) {
@@ -55,6 +56,7 @@ function normalizeImgSrc(val) {
 export default function DataExplorer({
   activeSource,
   onOpenSourceModal,
+  onSourceInvalid,
   isSidebarOpen,
   onToggleSidebar,
 }) {
@@ -99,7 +101,9 @@ export default function DataExplorer({
     setLoading(true);
     setError(null);
     try {
-      const res = await axios.get(`${AI_API_URL}/data-sources/${sourceId}/schema?limit=${rowLimit}`);
+      const res = await axios.get(`${AI_API_URL}/data-sources/${sourceId}/schema?limit=${rowLimit}`, {
+        headers: authHeaders(),
+      });
       if (res.data?.schema) {
         const schema = res.data.schema;
         setSchemaData(schema);
@@ -111,10 +115,18 @@ export default function DataExplorer({
       }
     } catch (err) {
       console.error("Failed to load schema:", err);
-      setError(
-        err.response?.data?.error ||
-        "Could not connect to the AI backend service. Please verify the server is running."
-      );
+      if (err.response?.status === 404) {
+        setError(
+          err.response?.data?.error ||
+            "This data source is no longer available. Reconnect or use the default database."
+        );
+        onSourceInvalid?.();
+      } else {
+        setError(
+          err.response?.data?.error ||
+            "Could not connect to the AI backend service. Please verify the server is running."
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -126,7 +138,8 @@ export default function DataExplorer({
     setTableLoading(true);
     try {
       const res = await axios.get(
-        `${AI_API_URL}/data-sources/${sourceId}/tables/${tableName}?limit=${limit}`
+        `${AI_API_URL}/data-sources/${sourceId}/tables/${tableName}?limit=${limit}`,
+        { headers: authHeaders() }
       );
       if (res.data?.data) {
         setSchemaData((prev) => ({

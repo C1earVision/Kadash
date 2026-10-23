@@ -15,9 +15,12 @@ import {
   ArrowRight,
   Server,
   Pencil,
-  Check
+  Check,
+  Trash2,
 } from "lucide-react";
 import { AI_API_URL } from "../config/api";
+import { reconcileSourceWithServer, DEFAULT_SOURCE } from "../lib/dataSourceSync";
+import { authHeaders } from "../lib/auth";
 
 export default function DataSourceModal({ isOpen, onClose, activeSource, onSelectSource }) {
   const [tab, setTab] = useState("connect");
@@ -28,6 +31,7 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
   const [editingSourceId, setEditingSourceId] = useState(null);
   const [editingName, setEditingName] = useState("");
   const [renameLoading, setRenameLoading] = useState(false);
+  const [deleteLoadingId, setDeleteLoadingId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
@@ -45,9 +49,20 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
 
   const fetchActiveSources = async () => {
     try {
-      const res = await axios.get(`${AI_API_URL}/data-sources/active`);
+      const res = await axios.get(`${AI_API_URL}/data-sources/active`, {
+        headers: authHeaders(),
+      });
       if (res.data?.data_sources) {
         setActiveSources(res.data.data_sources);
+        if (activeSource) {
+          const reconciled = reconcileSourceWithServer(
+            activeSource,
+            res.data.data_sources
+          );
+          if (reconciled.source_id !== (activeSource.source_id || "default")) {
+            onSelectSource(reconciled);
+          }
+        }
       }
     } catch (err) {
       console.error("Failed to fetch active data sources:", err);
@@ -65,10 +80,14 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
     setSuccessMsg(null);
 
     try {
-      const res = await axios.post(`${AI_API_URL}/data-sources/connect`, {
-        connection_string: connString.trim(),
-        custom_name: customName.trim() || undefined,
-      });
+      const res = await axios.post(
+        `${AI_API_URL}/data-sources/connect`,
+        {
+          connection_string: connString.trim(),
+          custom_name: customName.trim() || undefined,
+        },
+        { headers: authHeaders() }
+      );
 
       if (res.data?.data_source) {
         const newSource = res.data.data_source;
@@ -133,7 +152,7 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
       }
 
       const res = await axios.post(`${AI_API_URL}/data-sources/upload`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
+        headers: authHeaders({ "Content-Type": "multipart/form-data" }),
       });
 
       if (res.data?.data_source) {
@@ -166,6 +185,39 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
     setEditingName("");
   };
 
+  const handleDeleteSource = async (e, source) => {
+    e.stopPropagation();
+    if (source.source_id === "default") return;
+    const label = source.name || source.source_id;
+    if (
+      !window.confirm(
+        `Remove "${label}" from active sources? This cannot be undone.${
+          source.type === "file"
+            ? " The uploaded dataset file will be deleted from the server."
+            : ""
+        }`
+      )
+    ) {
+      return;
+    }
+    setDeleteLoadingId(source.source_id);
+    setError(null);
+    try {
+      await axios.delete(`${AI_API_URL}/data-sources/${source.source_id}`, {
+        headers: authHeaders(),
+      });
+      setActiveSources((prev) => prev.filter((s) => s.source_id !== source.source_id));
+      if ((activeSource?.source_id || "default") === source.source_id) {
+        onSelectSource(DEFAULT_SOURCE);
+      }
+      setSuccessMsg(`Removed "${label}".`);
+    } catch (err) {
+      setError(err.response?.data?.error || "Failed to remove data source.");
+    } finally {
+      setDeleteLoadingId(null);
+    }
+  };
+
   const handleSaveRename = async (e, sourceId) => {
     if (e) e.stopPropagation();
     if (!editingName.trim()) {
@@ -174,9 +226,11 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
     }
     setRenameLoading(true);
     try {
-      const res = await axios.patch(`${AI_API_URL}/data-sources/${sourceId}/rename`, {
-        name: editingName.trim(),
-      });
+      const res = await axios.patch(
+        `${AI_API_URL}/data-sources/${sourceId}/rename`,
+        { name: editingName.trim() },
+        { headers: authHeaders() }
+      );
       if (res.data?.data_source) {
         const updated = res.data.data_source;
         setActiveSources((prev) =>
@@ -455,7 +509,7 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
 
           {/* TAB 3: Active Sources */}
           {tab === "active" && (
-            <div className="space-y-2.5">
+            <div className="space-y-2.5 max-h-[min(420px,55vh)] overflow-y-auto pr-1">
               {activeSources.length === 0 ? (
                 <p className="text-[13px] text-[#6B7280] text-center py-6">
                   No custom data sources registered yet.
@@ -465,6 +519,8 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
                   const isSelected = (activeSource?.source_id || "default") === source.source_id;
                   const isEditing = editingSourceId === source.source_id;
                   const canRename = source.source_id !== "default";
+                  const canDelete = source.source_id !== "default";
+                  const isDeleting = deleteLoadingId === source.source_id;
 
                   return (
                     <div
@@ -557,7 +613,24 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
                           </p>
                         </div>
                       </div>
-                      <ArrowRight size={14} className="text-[#6B7280] shrink-0" />
+                      <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        {canDelete && (
+                          <button
+                            type="button"
+                            disabled={isDeleting}
+                            onClick={(e) => handleDeleteSource(e, source)}
+                            className="p-1.5 rounded-md text-[#6B7280] hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                            title="Remove data source"
+                          >
+                            {isDeleting ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={14} />
+                            )}
+                          </button>
+                        )}
+                        <ArrowRight size={14} className="text-[#6B7280]" />
+                      </div>
                     </div>
                   );
                 })

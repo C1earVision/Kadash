@@ -1,6 +1,8 @@
 # Dynamic Data Source Manager
 # Manages external database connections and uploaded file databases (CSV/Excel via DuckDB).
 
+import glob
+import json
 import os
 import re
 import uuid
@@ -29,6 +31,7 @@ class DataSourceManager:
         os.makedirs(self.storage_dir, exist_ok=True)
         self.default_db_conn = dataBaseConnection()
         self._default_db_instance = None
+        self._load_persisted_file_sources()
 
     def get_default_db(self) -> Optional[SQLDatabase]:
         if self._default_db_instance is None:
@@ -124,6 +127,7 @@ class DataSourceManager:
             "schema": schema_meta,
         }
         self.sources[source_id] = source_record
+        self._persist_source_meta(source_id, display_name, "file", table_names)
         return {
             "source_id": source_id,
             "name": display_name,
@@ -136,11 +140,18 @@ class DataSourceManager:
         if source_id == "default":
             raise ValueError("The default database cannot be renamed.")
         if source_id not in self.sources:
+            self._restore_file_source(source_id)
+        if source_id not in self.sources:
             raise ValueError(f"Data source '{source_id}' not found.")
         clean_name = new_name.strip()
         if not clean_name:
             raise ValueError("Dataset name cannot be empty.")
         self.sources[source_id]["name"] = clean_name
+        rec = self.sources[source_id]
+        if rec.get("type") == "file":
+            self._persist_source_meta(
+                source_id, clean_name, "file", rec.get("tables") or []
+            )
         return {
             "source_id": source_id,
             "name": clean_name,
@@ -149,22 +160,201 @@ class DataSourceManager:
             "schema": self.sources[source_id].get("schema", {}),
         }
 
-    def get_source(self, source_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        if source_id and source_id in self.sources:
+    def _delete_file_artifacts(self, source_id: str) -> None:
+        """Remove DuckDB file, metadata, and temp upload files for a file-backed source."""
+        for path in (
+            self._duckdb_path(source_id),
+            self._meta_path(source_id),
+        ):
+            try:
+                if os.path.isfile(path):
+                    os.remove(path)
+            except Exception as e:
+                print(f"[DataSourceManager] Failed to remove {path}: {e}")
+
+        pattern = os.path.join(self.storage_dir, f"{source_id}_*")
+        for path in glob.glob(pattern):
+            try:
+                if os.path.isfile(path):
+                    os.remove(path)
+            except Exception as e:
+                print(f"[DataSourceManager] Failed to remove {path}: {e}")
+
+    def delete_source(self, source_id: str) -> Dict[str, Any]:
+        if source_id == "default":
+            raise ValueError("The default database cannot be deleted.")
+
+        if source_id not in self.sources:
+            self._restore_file_source(source_id)
+
+        if source_id not in self.sources:
+            if source_id.startswith("file_") and (
+                os.path.isfile(self._duckdb_path(source_id))
+                or os.path.isfile(self._meta_path(source_id))
+            ):
+                self._delete_file_artifacts(source_id)
+                return {"source_id": source_id, "deleted": True}
+            raise ValueError(f"Data source '{source_id}' not found.")
+
+        record = self.sources.pop(source_id)
+        if record.get("type") == "file":
+            self._delete_file_artifacts(source_id)
+
+        print(f"[DataSourceManager] Deleted source {source_id}")
+        return {"source_id": source_id, "deleted": True}
+
+    def _meta_path(self, source_id: str) -> str:
+        return os.path.join(self.storage_dir, f"{source_id}.meta.json")
+
+    def _duckdb_path(self, source_id: str) -> str:
+        return os.path.join(self.storage_dir, f"{source_id}.duckdb")
+
+    def _persist_source_meta(
+        self,
+        source_id: str,
+        name: str,
+        source_type: str,
+        tables: List[str],
+    ) -> None:
+        try:
+            with open(self._meta_path(source_id), "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "source_id": source_id,
+                        "name": name,
+                        "type": source_type,
+                        "tables": tables,
+                    },
+                    f,
+                    indent=2,
+                )
+        except Exception as e:
+            print(f"[DataSourceManager] Failed to persist meta for {source_id}: {e}")
+
+    def _attach_file_source(
+        self,
+        source_id: str,
+        db_path: str,
+        display_name: str,
+        table_names: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        uri_path = db_path.replace("\\", "/")
+        db = SQLDatabase.from_uri(f"duckdb:///{uri_path}")
+        tables = table_names or list(db.get_usable_table_names())
+        schema_meta = self._inspect_database_schema(db, tables)
+        source_record = {
+            "source_id": source_id,
+            "name": display_name,
+            "type": "file",
+            "db": db,
+            "tables": tables,
+            "schema": schema_meta,
+        }
+        self.sources[source_id] = source_record
+        return source_record
+
+    def _restore_file_source(self, source_id: str) -> Optional[Dict[str, Any]]:
+        if not source_id.startswith("file_"):
+            return None
+        if source_id in self.sources:
             return self.sources[source_id]
-        
-        # Fall back to default DB
+
+        db_path = self._duckdb_path(source_id)
+        if not os.path.isfile(db_path):
+            return None
+
+        name = "Uploaded Dataset"
+        tables: Optional[List[str]] = None
+        meta_path = self._meta_path(source_id)
+        if os.path.isfile(meta_path):
+            try:
+                with open(meta_path, encoding="utf-8") as f:
+                    meta = json.load(f)
+                name = meta.get("name") or name
+                tables = meta.get("tables") or None
+            except Exception as e:
+                print(f"[DataSourceManager] Bad meta for {source_id}: {e}")
+
+        try:
+            print(f"[DataSourceManager] Restored file source {source_id} from disk")
+            return self._attach_file_source(source_id, db_path, name, tables)
+        except Exception as e:
+            print(f"[DataSourceManager] Failed to restore {source_id}: {e}")
+            return None
+
+    def _load_persisted_file_sources(self) -> None:
+        """Re-register uploaded DuckDB datasets after server restart."""
+        for db_path in glob.glob(os.path.join(self.storage_dir, "file_*.duckdb")):
+            source_id = os.path.splitext(os.path.basename(db_path))[0]
+            if source_id in self.sources:
+                continue
+            self._restore_file_source(source_id)
+
+    def _default_source_record(self) -> Optional[Dict[str, Any]]:
         default_db = self.get_default_db()
-        if default_db:
-            tables = default_db.get_usable_table_names()
-            return {
-                "source_id": "default",
-                "name": "Default Database",
-                "type": "database",
-                "db": default_db,
-                "tables": tables,
-                "schema": {},
-            }
+        if not default_db:
+            return None
+        tables = default_db.get_usable_table_names()
+        return {
+            "source_id": "default",
+            "name": "Default Database",
+            "type": "database",
+            "db": default_db,
+            "tables": tables,
+            "schema": {},
+        }
+
+    def source_exists(self, source_id: Optional[str]) -> bool:
+        if not source_id or source_id == "default":
+            return self.get_default_db() is not None
+        if source_id in self.sources:
+            return True
+        if source_id.startswith("file_"):
+            return (
+                os.path.isfile(self._duckdb_path(source_id))
+                or self._restore_file_source(source_id) is not None
+            )
+        return False
+
+    def get_source_strict(self, source_id: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Resolve a source by id without silently substituting the default database."""
+        if not source_id or source_id == "default":
+            return self._default_source_record()
+        if source_id in self.sources:
+            return self.sources[source_id]
+        restored = self._restore_file_source(source_id)
+        if restored:
+            return restored
+        return None
+
+    def resolve_source(
+        self, source_id: Optional[str]
+    ) -> tuple[Optional[Dict[str, Any]], bool, Optional[str]]:
+        """Return (active_source, fell_back_to_default, requested_source_id)."""
+        requested = (source_id or "default").strip() or "default"
+        if requested == "default":
+            return self._default_source_record(), False, requested
+
+        strict = self.get_source_strict(requested)
+        if strict:
+            return strict, False, requested
+
+        print(
+            f"[DataSourceManager] Source '{requested}' unavailable — using default database"
+        )
+        return self._default_source_record(), True, requested
+
+    def get_source(
+        self,
+        source_id: Optional[str] = None,
+        *,
+        fallback_to_default: bool = True,
+    ) -> Optional[Dict[str, Any]]:
+        strict = self.get_source_strict(source_id)
+        if strict:
+            return strict
+        if fallback_to_default:
+            return self._default_source_record()
         return None
 
     # Convert database cell values to JSON serializable formats, encoding binary images to base64 data URLs
@@ -187,9 +377,14 @@ class DataSourceManager:
         return str(val)
 
     def get_schema(self, source_id: Optional[str] = None, limit: int = 15) -> Dict[str, Any]:
-        source = self.get_source(source_id)
+        source = self.get_source(source_id, fallback_to_default=False)
         if not source:
-            return {"tables": [], "columns": {}, "previews": {}}
+            return {
+                "tables": [],
+                "columns": {},
+                "previews": {},
+                "error": f"Data source '{source_id}' is not available",
+            }
 
         db = source["db"]
         tables = source.get("tables") or db.get_usable_table_names()
@@ -197,9 +392,14 @@ class DataSourceManager:
 
     # Fetch table records with configurable row limit
     def get_table_data(self, source_id: Optional[str], table_name: str, limit: int = 25) -> Dict[str, Any]:
-        source = self.get_source(source_id)
+        source = self.get_source(source_id, fallback_to_default=False)
         if not source:
-            return {"columns": [], "rows": [], "total": 0}
+            return {
+                "columns": [],
+                "rows": [],
+                "total": 0,
+                "error": f"Data source '{source_id}' is not available",
+            }
         db = source["db"]
         from sqlalchemy import text
         structured = {"columns": [], "rows": [], "total": 0}

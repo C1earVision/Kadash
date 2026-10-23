@@ -27,7 +27,7 @@ YOUR TASK
 Using the real data above, create a complete dashboard specification:
 
 ### DASHBOARD STRUCTURE RULES:
-1. **Single chart requests** (is_single_chart=true): Create 1 page with 1-2 charts and 2-4 KPIs.
+1. **Single chart requests** (is_single_chart=true): Create **exactly 1 page** with **exactly 1 chart** (type `table` if tabular). **No KPI scorecards.** Optional: **one** page-level slider if the data supports threshold filtering. Do not add extra pages or decorative charts.
 2. **Dashboard/overview/report requests**: Create 2-4 pages organized by analytical theme:
    - Page 1: Executive Overview (macro KPIs, primary trend, key distribution)
    - Page 2+: Thematic deep-dives (product performance, customer analysis, operational health, etc.)

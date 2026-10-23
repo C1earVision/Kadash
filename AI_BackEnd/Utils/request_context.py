@@ -8,9 +8,27 @@ from typing import TYPE_CHECKING, List, Optional
 if TYPE_CHECKING:
     import httpx
 
+    from Utils.jwt_auth import AuthUser
+
 current_cancel_scope: contextvars.ContextVar[Optional["QueryCancelScope"]] = (
     contextvars.ContextVar("current_cancel_scope", default=None)
 )
+
+current_bearer_token: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "current_bearer_token", default=None
+)
+
+current_auth_user: contextvars.ContextVar[Optional["AuthUser"]] = contextvars.ContextVar(
+    "current_auth_user", default=None
+)
+
+
+def get_api_bearer_token() -> Optional[str]:
+    return current_bearer_token.get()
+
+
+def get_auth_user() -> Optional["AuthUser"]:
+    return current_auth_user.get()
 
 
 def get_cancel_scope() -> Optional["QueryCancelScope"]:

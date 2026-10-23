@@ -30,7 +30,7 @@ const login = async (req,res)=>{
       STRING_AGG(cp."Phone", ',') AS "PhoneNumbers"
     FROM 
       "Customer" c
-    INNER JOIN 
+    LEFT JOIN 
       "CPhone" cp ON c."CustomerId" = cp."CustomerId"
     WHERE 
       c."Email" = $1
@@ -55,16 +55,16 @@ const login = async (req,res)=>{
 
   const passIsMatch = await comparePassword(password, user.Password)
   if(!passIsMatch){
-    throw new CustomAPIError('Password doesnt match', StatusCodes.UNAUTHORIZED)
+    throw new CustomAPIError('Email or password wrong', StatusCodes.UNAUTHORIZED)
   }
 
   if (!user.AdminState) {
     throw new CustomAPIError('Access restricted to business owners / administrators', StatusCodes.FORBIDDEN)
   }
 
-  console.log(user)
+  const { Password: _password, ...safeUser } = user
   const token = createJWT(user.AdminState, user.CustomerId, user.Name)
-  res.status(StatusCodes.OK).json({user, token})
+  res.status(StatusCodes.OK).json({ user: safeUser, token })
 }
 
 
