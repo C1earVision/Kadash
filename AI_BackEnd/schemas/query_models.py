@@ -36,6 +36,23 @@ class DashboardKpi(BaseModel):
     description: Optional[str] = None
 
 
+class DashboardSlider(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+    label: str
+    filterKey: str
+    sliderMin: float
+    sliderMax: float
+    sliderStep: Optional[float] = None
+    defaultValue: Optional[float] = None
+    sliderUnit: Optional[str] = None
+    targetScope: Optional[str] = "page"
+    targetChartIds: Optional[List[str]] = None
+    operator: Optional[str] = ">="
+    description: Optional[str] = None
+
+
 class DashboardPage(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -46,6 +63,7 @@ class DashboardPage(BaseModel):
     insights: Optional[List[str]] = None
     kpis: Optional[List[DashboardKpi]] = None
     charts: Optional[List[DashboardChart]] = None
+    sliders: Optional[List[DashboardSlider]] = None
 
 
 class DashboardSpec(BaseModel):
@@ -57,6 +75,8 @@ class DashboardSpec(BaseModel):
     charts: Optional[List[DashboardChart]] = None
     kpis: Optional[List[DashboardKpi]] = None
     insights: Optional[List[str]] = None
+    sliders: Optional[List[DashboardSlider]] = None
+    global_sliders: Optional[List[DashboardSlider]] = None
 
 
 class AgentStep(BaseModel):

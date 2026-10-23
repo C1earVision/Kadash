@@ -100,21 +100,66 @@ export function formatCellLabel(val, key = "") {
 function normalizeDashboardSpec(spec) {
   if (!spec) return null;
 
+  const normalizePage = (p, idx) => {
+    const rawCharts = Array.isArray(p.charts) ? p.charts : [];
+    const pageSliders = Array.isArray(p.sliders) ? [...p.sliders] : [];
+
+    // Auto-promote any legacy chart with type: "slider" into a standalone slider
+    const normalizedCharts = rawCharts.map((c, cIdx) => {
+      const cId = c.id || `chart-${idx + 1}-${cIdx + 1}`;
+      if (c.type === "slider") {
+        const sliderId = `slider_${cId}`;
+        if (!pageSliders.some((s) => s.id === sliderId)) {
+          pageSliders.push({
+            id: sliderId,
+            label: `${c.title || "Metric"} Slider`,
+            description: c.description || "Interactive threshold filter",
+            filterKey: c.filterKey || c.dataKeys?.[0]?.key || "value",
+            sliderMin: c.sliderMin ?? 0,
+            sliderMax: c.sliderMax ?? 100,
+            sliderStep: c.sliderStep ?? 1,
+            defaultValue: c.sliderMin ?? 0,
+            sliderUnit: c.sliderUnit || "",
+            targetScope: "chart",
+            targetChartIds: [cId],
+            operator: ">=",
+          });
+        }
+        return {
+          ...c,
+          id: cId,
+          type: "bar", // Render as standard bar chart driven by the standalone slider
+        };
+      }
+      return { ...c, id: cId };
+    });
+
+    return {
+      id: p.id || `page-${idx + 1}`,
+      name: p.name || `Page ${idx + 1}`,
+      summary: p.summary || p.description || "",
+      insights: Array.isArray(p.insights) ? p.insights : [],
+      kpis: (Array.isArray(p.kpis) ? p.kpis : []).map((k) => ({
+        ...k,
+        value: formatKpiDisplay(k?.value),
+      })),
+      charts: normalizedCharts,
+      sliders: pageSliders,
+    };
+  };
+
+  const globalSliders = Array.isArray(spec.global_sliders)
+    ? spec.global_sliders
+    : Array.isArray(spec.sliders)
+    ? spec.sliders
+    : [];
+
   if (Array.isArray(spec.pages) && spec.pages.length > 0) {
     return {
       title: spec.title || "Business Intelligence Report",
       subtitle: spec.subtitle || spec.description || "",
-      pages: spec.pages.map((p, idx) => ({
-        id: p.id || `page-${idx + 1}`,
-        name: p.name || `Page ${idx + 1}`,
-        summary: p.summary || p.description || "",
-        insights: Array.isArray(p.insights) ? p.insights : [],
-        kpis: (Array.isArray(p.kpis) ? p.kpis : []).map((k) => ({
-          ...k,
-          value: formatKpiDisplay(k?.value),
-        })),
-        charts: Array.isArray(p.charts) ? p.charts : [],
-      })),
+      global_sliders: globalSliders,
+      pages: spec.pages.map((p, idx) => normalizePage(p, idx)),
     };
   }
 
@@ -126,18 +171,20 @@ function normalizeDashboardSpec(spec) {
     return {
       title: spec.title || "Analytical Summary",
       subtitle: spec.description || "",
+      global_sliders: globalSliders,
       pages: [
-        {
-          id: "page-1",
-          name: spec.title || "Overview",
-          summary: spec.description || "",
-          insights: legacyInsights,
-          kpis: legacyKpis.map((k) => ({
-            ...k,
-            value: formatKpiDisplay(k?.value),
-          })),
-          charts: legacyCharts,
-        },
+        normalizePage(
+          {
+            id: "page-1",
+            name: spec.title || "Overview",
+            summary: spec.description || "",
+            insights: legacyInsights,
+            kpis: legacyKpis,
+            charts: legacyCharts,
+            sliders: spec.sliders,
+          },
+          0
+        ),
       ],
     };
   }
@@ -606,7 +653,180 @@ function MapChart({ chart, height = 260 }) {
   );
 }
 
-/* ─── Slider Chart ─── */
+/* ─── Chart Filter Helper (Driven by Sliders) ─── */
+function getFilteredChart(chart, activeSliders, sliderValues) {
+  if (!chart || !Array.isArray(chart.data)) return chart;
+  const rawData = chart.data;
+
+  // Find which sliders apply to this chart
+  const applicableSliders = (activeSliders || []).filter((slider) => {
+    // 1. Chart-specific scope
+    if (slider.targetScope === "chart") {
+      const targetIds = Array.isArray(slider.targetChartIds) ? slider.targetChartIds : [];
+      return targetIds.includes(chart.id) || (targetIds.length === 0 && slider.targetChartId === chart.id);
+    }
+    // 2. Explicit targetChartIds override even on page/all scope
+    if (Array.isArray(slider.targetChartIds) && slider.targetChartIds.length > 0) {
+      return slider.targetChartIds.includes(chart.id);
+    }
+    // 3. Page or All scope: applies if chart rows contain the filterKey
+    const fKey = slider.filterKey;
+    if (!fKey) return false;
+    return rawData.some((row) => row && row[fKey] !== undefined && row[fKey] !== null);
+  });
+
+  if (applicableSliders.length === 0) {
+    return { ...chart, isFiltered: false, activeFilterText: null };
+  }
+
+  let filtered = [...rawData];
+  const filterDescriptions = [];
+
+  for (const s of applicableSliders) {
+    const rawVal = sliderValues[s.id];
+    const currentVal = rawVal !== undefined ? rawVal : (s.defaultValue !== undefined ? s.defaultValue : s.sliderMin);
+    const key = s.filterKey;
+    const op = s.operator || ">=";
+
+    filtered = filtered.filter((row) => {
+      if (!row || row[key] === undefined || row[key] === null) return true;
+      const v = parseFloat(row[key]);
+      if (isNaN(v)) return true;
+      switch (op) {
+        case ">=": return v >= currentVal;
+        case "<=": return v <= currentVal;
+        case ">": return v > currentVal;
+        case "<": return v < currentVal;
+        case "==": return v === currentVal;
+        default: return v >= currentVal;
+      }
+    });
+
+    filterDescriptions.push(
+      `${s.label || key} ${op} ${currentVal.toLocaleString()}${s.sliderUnit ? ` ${s.sliderUnit}` : ""}`
+    );
+  }
+
+  return {
+    ...chart,
+    data: filtered,
+    originalCount: rawData.length,
+    filteredCount: filtered.length,
+    isFiltered: filtered.length !== rawData.length,
+    activeFilterText: filterDescriptions.join(", "),
+  };
+}
+
+/* ─── Standalone Dashboard Slider Control ─── */
+function DashboardSliderControl({ slider, value, onChange, onReset, affectedChartsCount }) {
+  const currentVal = value !== undefined ? value : (slider.defaultValue !== undefined ? slider.defaultValue : slider.sliderMin);
+  const min = slider.sliderMin ?? 0;
+  const max = slider.sliderMax ?? 100;
+  const step = slider.sliderStep ?? Math.max(1, Math.round((max - min) / 50));
+  const unit = slider.sliderUnit || "";
+  const op = slider.operator || ">=";
+  const pct = max > min ? Math.min(100, Math.max(0, ((currentVal - min) / (max - min)) * 100)) : 0;
+
+  // Scope badge info
+  const scopeBadge = useMemo(() => {
+    if (slider.targetScope === "all") {
+      return {
+        label: "Entire Dashboard",
+        cls: "text-purple-400 bg-purple-500/10 border-purple-500/20",
+        tooltip: "Filters matching data across all pages and charts in the dashboard",
+      };
+    }
+    if (slider.targetScope === "chart") {
+      const count = slider.targetChartIds?.length || 1;
+      return {
+        label: count === 1 ? "1 Chart" : `${count} Charts`,
+        cls: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+        tooltip: "Filters only specific targeted chart(s)",
+      };
+    }
+    return {
+      label: "Current Page",
+      cls: "text-blue-400 bg-blue-500/10 border-blue-500/20",
+      tooltip: "Filters all matching charts on this page",
+    };
+  }, [slider.targetScope, slider.targetChartIds]);
+
+  const isModified = value !== undefined && value !== (slider.defaultValue ?? slider.sliderMin);
+
+  return (
+    <div className="bg-[#12141A] border border-[#262A32] rounded-lg p-3.5 transition-all hover:border-[#3A3F4D]">
+      {/* Header: Label, Scope Badge & Readout */}
+      <div className="flex items-start justify-between gap-3 mb-2.5">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 text-[#E0E2E6] font-medium text-[13px]">
+              <SlidersHorizontal size={13} className="text-[#5B8DEF] shrink-0" />
+              <span>{slider.label}</span>
+            </div>
+            <span
+              className={`text-[9.5px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full border ${scopeBadge.cls}`}
+              title={scopeBadge.tooltip}
+            >
+              {scopeBadge.label}
+            </span>
+          </div>
+          {slider.description && (
+            <p className="text-[11px] text-[#6B7075] mt-0.5 leading-tight">
+              {slider.description}
+            </p>
+          )}
+        </div>
+
+        {/* Value readout + Reset button */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="text-right">
+            <span className="text-[11px] text-[#8B8F98]">Threshold: </span>
+            <span className="font-mono font-semibold text-[13px] text-white">
+              {op} {currentVal.toLocaleString()}{unit && ` ${unit}`}
+            </span>
+          </div>
+          {isModified && (
+            <button
+              type="button"
+              onClick={() => onReset(slider.id)}
+              className="text-[10px] text-[#6B7075] hover:text-white px-1.5 py-0.5 rounded bg-[#1A1D24] border border-[#262A32] transition-colors cursor-pointer"
+              title="Reset slider to initial value"
+            >
+              Reset
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Slider Track */}
+      <div className="relative pt-1 pb-1">
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={currentVal}
+          onChange={(e) => onChange(slider.id, parseFloat(e.target.value))}
+          className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
+          style={{
+            background: `linear-gradient(to right, #5B8DEF 0%, #5B8DEF ${pct}%, #1E2128 ${pct}%, #1E2128 100%)`,
+          }}
+        />
+        <div className="flex justify-between items-center text-[10px] text-[#4A4E58] font-mono mt-1">
+          <span>{min.toLocaleString()}{unit && ` ${unit}`}</span>
+          {affectedChartsCount !== undefined && affectedChartsCount > 0 && (
+            <span className="text-[#5B8DEF] font-sans font-medium text-[10.5px]">
+              Active on {affectedChartsCount} {affectedChartsCount === 1 ? "chart" : "charts"}
+            </span>
+          )}
+          <span>{max.toLocaleString()}{unit && ` ${unit}`}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Slider Chart (Legacy Fallback) ─── */
 function SliderChart({ chart, height = 260 }) {
   const filterKey = chart.filterKey || chart.dataKeys?.[0]?.key || "value";
   const xKey = chart.xAxisKey || "name";
@@ -719,9 +939,19 @@ function ChartCard({ chart, onExpand, expanded = false }) {
       {/* Header */}
       <div className="flex items-start justify-between mb-2.5 gap-2">
         <div className="min-w-0">
-          <h4 className="text-[13px] font-medium text-[#D0D3D8] leading-snug">
-            {chart.title}
-          </h4>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h4 className="text-[13px] font-medium text-[#D0D3D8] leading-snug">
+              {chart.title}
+            </h4>
+            {chart.isFiltered && (
+              <span
+                className="text-[9.5px] font-mono text-[#5B8DEF] bg-[#5B8DEF]/10 border border-[#5B8DEF]/20 px-1.5 py-0.5 rounded"
+                title={chart.activeFilterText || "Filtered by interactive slider"}
+              >
+                {chart.filteredCount}/{chart.originalCount} items
+              </span>
+            )}
+          </div>
           {chart.description && (
             <p className="text-[11px] text-[#4A4E58] mt-0.5 leading-normal">
               {chart.description}
@@ -1097,7 +1327,11 @@ function exportReportToXlsx(report, activePage) {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(kpiRows), kpiSheetName);
     }
 
-    (Array.isArray(page.charts) ? page.charts : []).forEach((chart, cIdx) => {
+    const pageCharts = (page.id === activePage?.id && Array.isArray(activePage.charts))
+      ? activePage.charts
+      : (Array.isArray(page.charts) ? page.charts : []);
+
+    pageCharts.forEach((chart, cIdx) => {
       const xKey = chart.xAxisKey || "name";
       const dks =
         Array.isArray(chart.dataKeys) && chart.dataKeys.length > 0
@@ -1149,6 +1383,22 @@ export default function InteractiveDashboard({ spec }) {
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [modalChart, setModalChart] = useState(null);
+  const [sliderValues, setSliderValues] = useState({});
+
+  const handleSliderChange = (sliderId, val) => {
+    setSliderValues((prev) => ({
+      ...prev,
+      [sliderId]: val,
+    }));
+  };
+
+  const handleSliderReset = (sliderId) => {
+    setSliderValues((prev) => {
+      const next = { ...prev };
+      delete next[sliderId];
+      return next;
+    });
+  };
 
   useEffect(() => {
     const onKey = (e) => {
@@ -1181,8 +1431,38 @@ export default function InteractiveDashboard({ spec }) {
   const charts = page.charts || [];
   const insights = page.insights || [];
 
+  const globalSliders = report.global_sliders || [];
+  const pageSliders = page.sliders || [];
+
+  /* Combined active sliders for current view */
+  const activeSliders = useMemo(() => {
+    const list = [];
+    const seen = new Set();
+
+    globalSliders.forEach((s) => {
+      if (!seen.has(s.id)) {
+        seen.add(s.id);
+        list.push({ ...s, targetScope: s.targetScope || "all" });
+      }
+    });
+
+    pageSliders.forEach((s) => {
+      if (!seen.has(s.id)) {
+        seen.add(s.id);
+        list.push({ ...s, targetScope: s.targetScope || "page" });
+      }
+    });
+
+    return list;
+  }, [globalSliders, pageSliders]);
+
+  /* Filter charts in real-time according to slider values */
+  const filteredCharts = useMemo(() => {
+    return charts.map((c) => getFilteredChart(c, activeSliders, sliderValues));
+  }, [charts, activeSliders, sliderValues]);
+
   const gridCols =
-    charts.length === 1 ? "grid-cols-1" : "grid-cols-1 lg:grid-cols-2";
+    filteredCharts.length === 1 ? "grid-cols-1" : "grid-cols-1 lg:grid-cols-2";
 
   /* ─── Dashboard body (shared between inline and fullscreen) ─── */
   const body = (fs = false) => (
@@ -1201,14 +1481,14 @@ export default function InteractiveDashboard({ spec }) {
         </div>
         <div className="flex items-center gap-4 shrink-0 pt-0.5">
           <button
-            onClick={() => exportPageToCsv(page, report.title)}
+            onClick={() => exportPageToCsv({ ...page, charts: filteredCharts }, report.title)}
             className="text-[11px] text-[#4A4E58] hover:text-[#8B8F98] transition-colors"
             title="Export as CSV"
           >
             CSV
           </button>
           <button
-            onClick={() => exportReportToXlsx(report, page)}
+            onClick={() => exportReportToXlsx(report, { ...page, charts: filteredCharts })}
             className="text-[11px] text-[#4A4E58] hover:text-[#8B8F98] transition-colors flex items-center gap-1"
             title="Export full report to Excel (.xlsx) — ready for Power BI Desktop"
           >
@@ -1315,10 +1595,59 @@ export default function InteractiveDashboard({ spec }) {
         </div>
       )}
 
+      {/* ── Standalone Sliders Section ── */}
+      {activeSliders.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-2.5">
+            <div className="text-[10px] text-[#5A5E66] font-medium uppercase tracking-wider flex items-center gap-1.5">
+              <SlidersHorizontal size={11} className="text-[#5B8DEF]" />
+              <span>Interactive Filter Sliders</span>
+            </div>
+            {Object.keys(sliderValues).length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSliderValues({})}
+                className="text-[10px] text-[#5B8DEF] hover:underline cursor-pointer"
+              >
+                Reset All Filters
+              </button>
+            )}
+          </div>
+          <div
+            className={
+              activeSliders.length === 1
+                ? "grid grid-cols-1"
+                : "grid grid-cols-1 md:grid-cols-2 gap-3"
+            }
+          >
+            {activeSliders.map((slider) => {
+              const affectedCount = filteredCharts.filter((c) => {
+                if (slider.targetScope === "chart") {
+                  const targetIds = slider.targetChartIds || [];
+                  return targetIds.includes(c.id);
+                }
+                return c.data?.some((r) => r && r[slider.filterKey] !== undefined);
+              }).length;
+
+              return (
+                <DashboardSliderControl
+                  key={slider.id}
+                  slider={slider}
+                  value={sliderValues[slider.id]}
+                  onChange={handleSliderChange}
+                  onReset={handleSliderReset}
+                  affectedChartsCount={affectedCount}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── Charts ── */}
-      {charts.length > 0 && (
+      {filteredCharts.length > 0 && (
         <div className={`grid gap-5 ${gridCols}`}>
-          {charts.map((chart, idx) => (
+          {filteredCharts.map((chart, idx) => (
             <div
               key={chart.id || idx}
               className="bg-[#12141A] rounded px-4 py-4"

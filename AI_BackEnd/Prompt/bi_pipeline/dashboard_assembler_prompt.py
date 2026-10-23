@@ -40,13 +40,11 @@ Using the real data above, create a complete dashboard specification:
 - **"map"**: For ANY geographic, spatial, or location-based data (customer distribution by state/city, regional sales, order origins, store/seller locations).
   * ALWAYS use "map" whenever a question has intent="geographic", when the user asks for a map/geographic view, or when data is grouped by geographic entities (e.g. `customer_state`, `customer_city`, `seller_state`, `state`, `city`, `uf`, `region`, `country`).
   * NOTE: You do NOT need raw latitude/longitude columns in the SQL data! The system has automatic built-in geocoding for all 27 Brazilian states (SP, RJ, MG, RS, PR, BA, SC, etc.), Brazilian cities, US states, and world cities.
-- **"slider"**: For interactive range-filtering or what-if analysis on a numeric column (e.g. "filter products by price range", "show orders above N units", "revenue threshold analysis"). USE THIS when the user asks to explore or filter data across a numeric range.
 - Match chart type to the question's analytical intent:
   * geographic → map (ALWAYS use "map" for geographic/location questions)
   * trend → area/line
   * comparison → bar
   * distribution → donut/pie
-  * filtering / threshold / what-if → slider
   * kpi → KPI card (no chart needed, use kpis array)
   * correlation → bar or line with multiple data keys
 
@@ -77,16 +75,32 @@ When using type "map":
 - `dataKeys`: Include at least one metric key with name and color for the marker metrics.
 - If the query already has explicit latitude and longitude columns, provide `latKey` and `lngKey`. If not, leave them null—the system will automatically resolve coordinates for states and cities!
 
-### SLIDER CHART RULES:
-When using type "slider", you MUST provide these additional fields:
-- `filterKey`: Column name in `data` that the slider filters against (e.g. "price", "order_count", "revenue")
-- `sliderMin`: Minimum value for the slider range (from the data)
-- `sliderMax`: Maximum value for the slider range (from the data)
-- `sliderStep`: A sensible step increment (e.g. 1, 10, 100, 0.01 depending on the data range)
-- `sliderUnit`: Unit label displayed next to the slider (e.g. "$", "units", "%", "days")
-- `xAxisKey`: The categorical column used to display filtered rows
-- `dataKeys`: The metric columns to show for each row passing the filter
-- The slider acts as a threshold — rows where `filterKey >= sliderValue` are shown in the chart below.
+### INTERACTIVE SLIDERS (STANDALONE DASHBOARD CONTROLS):
+Sliders are **STANDALONE INTERACTIVE CONTROLS** in the dashboard, NOT charts. They sit in the page's `sliders` array (or `global_sliders` on `FinalDashboardOutput`) and dynamically filter charts in real-time as the user drags them!
+
+**WHEN TO CREATE SLIDERS:**
+- Whenever the user asks for interactive exploration, filtering, thresholds, what-if analysis, or range exploration (e.g. "let me filter by price", "add a slider for minimum orders", "explore high-value customers").
+- Or when the dataset has an obvious continuous numeric metric (e.g. price, order count, payment value, review score, freight value) that benefits from interactive thresholding.
+
+**SLIDER SCOPE — YOU DECIDE HOW MUCH IT AFFECTS:**
+Depending on user intent and what makes analytical sense, choose the appropriate `targetScope`:
+1. **`targetScope="all"`**: Affects the **ENTIRE DASHBOARD**. Use this when a metric is pervasive across multiple pages or macro-level (e.g., global order threshold, price cutoff, year/date floor). All charts across all pages that contain `filterKey` will be filtered in unison!
+2. **`targetScope="page"`** (Default): Affects all matching charts on the **CURRENT PAGE**. Use this when the slider belongs to that page's specific theme (e.g. a "Product Pricing" page where dragging the price slider filters all product charts on that page).
+3. **`targetScope="chart"`**: Affects **ONLY ONE OR SPECIFIC CHART(S)**. Use this when only one detailed chart should be interactive (e.g. a high-density breakdown or a map) without altering the other summary charts on the page. In this case, you MUST set `targetChartIds=["chart_id_here"]`.
+
+**SLIDER FIELDS SPECIFICATION:**
+- `id`: Unique identifier, e.g. "slider_price_threshold", "slider_min_orders"
+- `label`: Clean user-facing title, e.g. "Price Threshold", "Minimum Order Count", "Freight Cap"
+- `description`: Explains what dragging the slider changes, e.g. "Filter products with price at or above threshold"
+- `filterKey`: The exact column name in chart `data` to filter against (e.g. "price", "order_count", "total_revenue", "review_score")
+- `sliderMin`: Minimum value in the data (e.g. 10.0)
+- `sliderMax`: Maximum value in the data (e.g. 1000.0)
+- `sliderStep`: Sensible step increment (e.g. 1, 10, 50, 0.5)
+- `defaultValue`: Initial slider position (usually equal to `sliderMin` so all data is initially visible)
+- `sliderUnit`: Display unit (e.g. "$", "units", "days", "%")
+- `targetScope`: "all", "page", or "chart"
+- `targetChartIds`: List of chart IDs if `targetScope="chart"` (or null if "page"/"all")
+- `operator`: ">=" (default floor threshold), "<=" (ceiling maximum), ">", "<", or "=="
 
 
 ### PAGE ICONS:

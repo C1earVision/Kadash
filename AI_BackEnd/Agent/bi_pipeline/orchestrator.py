@@ -40,6 +40,7 @@ from schemas.query_models import (
     DashboardPage,
     DashboardChart,
     DashboardKpi,
+    DashboardSlider,
     ChartDataKey,
     QueryResponse,
 )
@@ -704,6 +705,24 @@ def _to_dashboard_spec(output: FinalDashboardOutput) -> DashboardSpec:
             for k in page.kpis
         ]
 
+        page_sliders = [
+            DashboardSlider(
+                id=s.id,
+                label=s.label,
+                description=s.description,
+                filterKey=s.filterKey,
+                sliderMin=s.sliderMin,
+                sliderMax=s.sliderMax,
+                sliderStep=s.sliderStep,
+                defaultValue=s.defaultValue,
+                sliderUnit=s.sliderUnit,
+                targetScope=s.targetScope,
+                targetChartIds=s.targetChartIds,
+                operator=s.operator,
+            )
+            for s in (page.sliders or [])
+        ]
+
         pages.append(DashboardPage(
             id=page.id,
             name=page.name,
@@ -712,12 +731,33 @@ def _to_dashboard_spec(output: FinalDashboardOutput) -> DashboardSpec:
             insights=page.insights,
             kpis=kpis,
             charts=charts,
+            sliders=page_sliders if page_sliders else None,
         ))
+
+    global_sliders = [
+        DashboardSlider(
+            id=s.id,
+            label=s.label,
+            description=s.description,
+            filterKey=s.filterKey,
+            sliderMin=s.sliderMin,
+            sliderMax=s.sliderMax,
+            sliderStep=s.sliderStep,
+            defaultValue=s.defaultValue,
+            sliderUnit=s.sliderUnit,
+            targetScope=s.targetScope,
+            targetChartIds=s.targetChartIds,
+            operator=s.operator,
+        )
+        for s in (output.global_sliders or [])
+    ]
 
     return DashboardSpec(
         title=output.dashboard_title,
         subtitle=output.dashboard_subtitle,
         pages=pages,
+        global_sliders=global_sliders if global_sliders else None,
+        sliders=global_sliders if global_sliders else None,
     )
 
 
@@ -734,12 +774,14 @@ def _build_fallback_dashboard_output(
         ChartSpec,
         ChartDataKeySpec,
         KPISpec,
+        SliderSpec,
     )
     pages = []
     colors = ["#3B82F6", "#10B981", "#8B5CF6", "#F59E0B", "#EF4444", "#14B8A6"]
 
     charts = []
     kpis = []
+    fallback_sliders = []
 
     for k_idx, eq in enumerate(valid_results):
         if not eq.data:
@@ -839,6 +881,29 @@ def _build_fallback_dashboard_output(
         "Visualizations compiled directly from real database records.",
     ]
 
+    # If any chart data has numeric columns with variance, create an interactive threshold slider
+    for c in charts:
+        if c.data and c.dataKeys:
+            metric_k = c.dataKeys[0].key
+            nums = [float(r[metric_k]) for r in c.data if isinstance(r.get(metric_k), (int, float))]
+            if len(nums) >= 3 and max(nums) > min(nums):
+                min_v = float(min(nums))
+                max_v = float(max(nums))
+                fallback_sliders.append(SliderSpec(
+                    id=f"slider_{metric_k}",
+                    label=f"{c.dataKeys[0].name} Threshold",
+                    description=f"Filter data by {c.dataKeys[0].name}",
+                    filterKey=metric_k,
+                    sliderMin=min_v,
+                    sliderMax=max_v,
+                    sliderStep=max(1.0, round((max_v - min_v) / 20.0, 1)),
+                    defaultValue=min_v,
+                    sliderUnit="",
+                    targetScope="page",
+                    operator=">=",
+                ))
+                break
+
     pages.append(DashboardPageSpec(
         id="overview",
         name="Executive Overview",
@@ -847,6 +912,7 @@ def _build_fallback_dashboard_output(
         insights=insights,
         kpis=kpis[:4],
         charts=charts[:4],
+        sliders=fallback_sliders if fallback_sliders else None,
     ))
 
     takeaways = [

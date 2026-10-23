@@ -212,6 +212,40 @@ class PageInsights(BaseModel):
     )
 
 
+class SliderSpec(BaseModel):
+    """An interactive filter slider control in the dashboard.
+    
+    Sliders are standalone interactive elements that dynamically filter data
+    across charts based on their targetScope and filterKey.
+    """
+    id: str = Field(description="Unique identifier for the slider, e.g. 'slider_price_threshold', 'slider_min_orders'")
+    label: str = Field(description="User-facing title for the slider, e.g. 'Price Threshold', 'Minimum Orders', 'Rating Filter'")
+    description: Optional[str] = Field(default=None, description="Brief explanation of what dragging the slider changes")
+    filterKey: str = Field(description="Column name in chart data to filter against, e.g. 'price', 'order_value', 'revenue', 'review_score'")
+    sliderMin: float = Field(description="Minimum value for the slider range (derived from observed data)")
+    sliderMax: float = Field(description="Maximum value for the slider range (derived from observed data)")
+    sliderStep: Optional[float] = Field(default=None, description="Step increment (e.g. 1, 10, 50, 0.5)")
+    defaultValue: Optional[float] = Field(default=None, description="Initial slider position, defaults to sliderMin")
+    sliderUnit: Optional[str] = Field(default=None, description="Unit label displayed next to the slider, e.g. '$', 'units', 'days', '%'")
+    targetScope: Literal["all", "page", "chart"] = Field(
+        default="page",
+        description=(
+            "Scope of impact decided by the model: "
+            "'all' = filters matching charts across the ENTIRE dashboard; "
+            "'page' = filters matching charts on this specific page; "
+            "'chart' = filters ONLY the specific chart(s) specified in targetChartIds."
+        )
+    )
+    targetChartIds: Optional[List[str]] = Field(
+        default=None,
+        description="List of specific chart IDs that this slider filters. Required when targetScope is 'chart'. If targetScope is 'all' or 'page', leave empty to automatically affect all charts containing filterKey."
+    )
+    operator: Literal[">=", "<=", ">", "<", "=="] = Field(
+        default=">=",
+        description="Comparison operator for filtering: '>=' (threshold floor), '<=' (ceiling maximum), etc."
+    )
+
+
 class DashboardPageSpec(BaseModel):
     """A single page in the final dashboard."""
     id: str
@@ -229,6 +263,10 @@ class DashboardPageSpec(BaseModel):
     )
     charts: List[ChartSpec] = Field(
         description="1-4 charts for this page"
+    )
+    sliders: Optional[List[SliderSpec]] = Field(
+        default=None,
+        description="Optional interactive sliders for this page or targeted charts"
     )
 
 
@@ -248,4 +286,8 @@ class FinalDashboardOutput(BaseModel):
     dashboard_subtitle: str = Field(description="Descriptive subtitle")
     pages: List[DashboardPageSpec] = Field(
         description="1-4 dashboard pages"
+    )
+    global_sliders: Optional[List[SliderSpec]] = Field(
+        default=None,
+        description="Optional dashboard-wide interactive sliders affecting charts across all pages"
     )
