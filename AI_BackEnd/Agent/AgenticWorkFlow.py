@@ -18,11 +18,11 @@ class GeneralAgent:
         self.graph = None
         self.system_prompt = system_prompt
 
-    def agent_function(self, state: MessagesState):
-        """Main agent function"""
+    async def agent_function(self, state: MessagesState):
+        """Main agent function (async so client cancel can stop in-flight LLM calls)."""
         user_question = state["messages"]
         input_question = [self.system_prompt] + user_question
-        response = self.llm.invoke(input_question)
+        response = await self.llm.ainvoke(input_question)
         return {"messages": [response]}
 
     def build_graph(self, has_tools: bool):

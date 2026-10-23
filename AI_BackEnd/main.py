@@ -1,24 +1,23 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from DB.agent_visualizations import get_visualization
-from Agent.AgenticWorkFlow import GeneralAgent, SearchAgent, RagAgent, CrudAgent, analysisAgent
 from starlette.responses import JSONResponse
-from Prompt.generalSysPrompt import GENERAL_SYSTEM_PROMPT
-from Prompt.SearchSysPrompt import SEARCH_SYSTEM_PROMPT
-from Prompt.RagSysPropmt import RAG_SYSTEM_PROMPT
-from Prompt.dashboardSysPrompt import DASHBOARD_SYSTEM_PROMPT
-from Prompt.analysisAgent import ANALYSIS_AGENT_SYSTEM_PROMPT
 from dotenv import load_dotenv
-from pydantic import BaseModel
-from typing import Optional, List
-import json
-import re
+from pydantic import BaseModel, Field
+from typing import Optional, List, Any
+import asyncio
 import os
-import time
 from Utils.ModelLoader import is_rate_limit_error, extract_retry_delay, modelLoader
+from Utils.agent_trace import message_content_to_str
+from Utils.query_pipeline import run_query, run_query_stream
+from Utils.request_context import QueryCancelScope, current_cancel_scope
+from Utils.sse import format_sse
+from schemas.query_models import QueryResponse
 from DB.DataSourceManager import data_source_manager
 load_dotenv()
+# Agent runs (especially Ollama) can exceed LangChain's 120s default stream chunk gap.
+os.environ.setdefault("LANGCHAIN_OPENAI_STREAM_CHUNK_TIMEOUT_S", "0")
 # AI Backend server entrypoint
 app = FastAPI()
 
@@ -51,197 +50,83 @@ class ConnectDbRequest(BaseModel):
     custom_name: Optional[str] = None
 
 
+class RenameSourceRequest(BaseModel):
+    name: str
+
+
 class QueryRequest(BaseModel):
     question: str
     admin: bool
     source_id: Optional[str] = None
     model_id: Optional[str] = None
 
-def use_agent(messages, agent, max_retries=2):
+
+class AgentRunResult(BaseModel):
+    content: Any = ""
+    messages: List[Any] = Field(default_factory=list)
+
+
+async def _cancel_agent_task(
+    task: asyncio.Task,
+    cancel_scope: QueryCancelScope,
+    reason: str,
+) -> None:
+    if cancel_scope is not None:
+        cancel_scope.cancel()
+        await cancel_scope.abort_http()
+    if not task.done():
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+    print(f"[use_agent] {reason}")
+
+
+async def _await_cancellable(
+    task: asyncio.Task, request: Request, cancel_scope: QueryCancelScope
+):
+    while not task.done():
+        if cancel_scope is not None and cancel_scope.is_cancelled():
+            await _cancel_agent_task(task, cancel_scope, "Cancel scope triggered.")
+            raise asyncio.CancelledError()
+        if request is not None and await request.is_disconnected():
+            await _cancel_agent_task(task, cancel_scope, "Client disconnected.")
+            raise asyncio.CancelledError()
+        await asyncio.sleep(0.05)
+    return await task
+
+
+async def use_agent(
+    messages,
+    agent,
+    max_retries=2,
+    request: Request = None,
+    cancel_scope: QueryCancelScope = None,
+) -> AgentRunResult:
     for attempt in range(max_retries):
         try:
-            output = agent.invoke(messages)
+            task = asyncio.create_task(agent.ainvoke(messages))
+            output = await _await_cancellable(task, request, cancel_scope)
 
             if isinstance(output, dict) and "messages" in output:
-                return output["messages"][-1].content
-            else:
-                return str(output)
+                trace = list(output["messages"])
+                last = trace[-1]
+                content = message_content_to_str(getattr(last, "content", last))
+                return AgentRunResult(content=content, messages=trace)
+            return AgentRunResult(content=str(output), messages=[])
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             if is_rate_limit_error(e) and attempt < max_retries - 1:
                 delay = extract_retry_delay(e, attempt + 1)
-                print(f"[use_agent] Rate limit encountered during agent invocation. Retrying in {delay:.2f}s (attempt {attempt + 1}/{max_retries})...")
-                time.sleep(delay)
+                print(
+                    f"[use_agent] Rate limit encountered during agent invocation. "
+                    f"Retrying in {delay:.2f}s (attempt {attempt + 1}/{max_retries})..."
+                )
+                await asyncio.sleep(delay)
             else:
                 raise
-
-
-def _normalize_image_url(image_url: str) -> str:
-    image_url = image_url.strip()
-    if image_url.startswith("/"):
-        base = os.environ.get("AI_BACKEND_URL", "http://127.0.0.1:9000").rstrip("/")
-        return f"{base}{image_url}"
-    return image_url
-
-
-def _extract_json_object(text):
-    """Find the first balanced top-level JSON object in *text* using brace counting.
-    Returns the parsed dict on success, or None on failure."""
-    start = text.find("{")
-    if start == -1:
-        return None
-
-    depth = 0
-    in_string = False
-    escape_next = False
-
-    for i in range(start, len(text)):
-        ch = text[i]
-        if escape_next:
-            escape_next = False
-            continue
-        if ch == "\\":
-            escape_next = True
-            continue
-        if ch == '"':
-            in_string = not in_string
-            continue
-        if in_string:
-            continue
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                candidate = text[start : i + 1]
-                try:
-                    return json.loads(candidate, strict=False)
-                except json.JSONDecodeError:
-                    # This balanced block wasn't valid JSON; keep scanning
-                    start = text.find("{", i + 1)
-                    if start == -1:
-                        return None
-                    depth = 0
-    return None
-
-
-def _clean_dashboard_content(content: str) -> str:
-    """
-    Cleans text content accompanying an interactive dashboard so the user is only presented
-    with Key Takeaways and Recommendations, completely stripping out redundant dashboard
-    specifications, page overviews, visual descriptions, schema chatter, and conversational filler.
-    """
-    if not content or not isinstance(content, str):
-        return ""
-
-    text = content.strip()
-
-    # 1. If text has a Key Takeaways header, discard any introductory chatter or dashboard specs preceding it
-    takeaways_match = re.search(
-        r"(?:^|\n)(#{1,4}\s*Key Takeaways|\*\*Key Takeaways\*\*)",
-        text,
-        re.IGNORECASE,
-    )
-    if takeaways_match:
-        text = text[takeaways_match.start():].strip()
-
-    # 2. Strip sections dedicated to dashboard structure, visuals, or page listings
-    unwanted_section_patterns = [
-        r"(?i)#{1,4}\s*(?:Dashboard Overview|Dashboard Structure|Report Structure|Visualizations?|Dashboard Pages?|Pages? Breakdown|Report Pages?|Report Overview|Overview of the Dashboard).*?(?=(?:\n#{1,4}|\Z))",
-        # Bullet points describing pages: e.g. "- **Page 1: Executive Overview**..."
-        r"(?i)(?:^|\n)[*-]?\s*\**Page \d+[:\s\*\-].*?(?=(?:\n[*-]|\n#{1,4}|\Z))",
-        # Bullet points describing charts: e.g. "- **Chart 1: Area Chart**..."
-        r"(?i)(?:^|\n)[*-]?\s*\**(?:Chart|Visual)\s*\d+[:\s\*\-].*?(?=(?:\n[*-]|\n#{1,4}|\Z))",
-    ]
-    for pat in unwanted_section_patterns:
-        text = re.sub(pat, "\n", text, flags=re.DOTALL)
-
-    # 3. Strip individual sentences that describe generating the dashboard or visual specs
-    unwanted_sentence_patterns = [
-        r"(?i)(?:^|\n)\s*(?:Here is the (?:interactive )?dashboard|Below is the (?:interactive )?dashboard|The (?:interactive )?dashboard below|This dashboard (?:features|consists of|contains|provides|includes|is structured)|We have generated a (?:multi-page )?dashboard|In this report, we present|The report is organized into).*?(?:\.|\n)",
-        r"(?i)(?:^|\n)\s*(?:We queried the (?:database|tables?)|Using SQL aggregations?|The data was retrieved from|Through dynamic database discovery).*?(?:\.|\n)",
-    ]
-    for pat in unwanted_sentence_patterns:
-        text = re.sub(pat, "\n", text)
-
-    # 4. Clean up excess whitespace
-    text = re.sub(r"\n{3,}", "\n\n", text).strip()
-    return text
-
-
-def parse_visualization_answer(raw_answer):
-    print("PARSER FIX ACTIVE")
-
-    if raw_answer is None:
-        return None, None, None
-
-    # --- Already a dict (tool returned structured output) ---
-    if isinstance(raw_answer, dict):
-        content = raw_answer.get("content") or raw_answer.get("answer") or ""
-        image = raw_answer.get("image")
-        dashboard = raw_answer.get("dashboard")
-        if dashboard:
-            content = _clean_dashboard_content(content)
-        norm_image = _normalize_image_url(str(image)) if image else None
-        return content, norm_image, dashboard
-
-    text = str(raw_answer).strip()
-
-    # --- Strip markdown code fences (```json ... ```) ---
-    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"\s*```\s*$", "", text)
-    text = text.strip()
-
-    print("RAW TEXT BEING PARSED:", repr(text[:500]))
-
-    # --- Attempt 1: Direct json.loads on the full text ---
-    parsed = None
-    try:
-        parsed = json.loads(text, strict=False)
-    except json.JSONDecodeError:
-        pass
-
-    # --- Attempt 2: Balanced-brace extraction ---
-    if parsed is None:
-        print("Direct parse failed, trying balanced-brace extraction")
-        parsed = _extract_json_object(text)
-
-    # --- Attempt 3: The LLM sometimes double-escapes newlines ---
-    if parsed is None:
-        try:
-            cleaned = text.replace("\\n", "\n").replace("\\'", "'")
-            parsed = json.loads(cleaned, strict=False)
-        except json.JSONDecodeError:
-            parsed = _extract_json_object(cleaned) if cleaned != text else None
-
-    # --- Extract fields from the parsed dict ---
-    if isinstance(parsed, dict):
-        content = (
-            parsed.get("content")
-            or parsed.get("answer")
-            or parsed.get("summary")
-            or ""
-        )
-        image = parsed.get("image")
-        dashboard = parsed.get("dashboard")
-
-        # If there is no separate "dashboard" key but the top-level dict looks
-        # like a dashboard spec itself (has "pages" or "title" + "charts"), treat
-        # the whole thing as a dashboard.
-        if dashboard is None and ("pages" in parsed or "charts" in parsed):
-            dashboard = parsed
-            # Use "content" we already extracted; if it was empty, synthesize one
-            if not content:
-                content = parsed.get("title", "Dashboard")
-
-        if dashboard:
-            content = _clean_dashboard_content(content)
-
-        norm_image = _normalize_image_url(str(image)) if image else None
-        return content, norm_image, dashboard
-
-    # --- All parsing failed; return the raw text as content ---
-    print("All JSON parse attempts failed, returning raw text")
-    return text, None, None
 
 
 
@@ -274,14 +159,28 @@ async def connect_database(request: ConnectDbRequest):
 
 
 @app.post("/data-sources/upload")
-async def upload_data_files(files: List[UploadFile] = File(...)):
+async def upload_data_files(
+    files: List[UploadFile] = File(...),
+    custom_name: Optional[str] = Form(None),
+):
     try:
         files_data = []
         for file in files:
             content = await file.read()
             files_data.append({"filename": file.filename, "content": content})
 
-        result = data_source_manager.register_uploaded_files(files_data)
+        result = data_source_manager.register_uploaded_files(
+            files_data, custom_name=custom_name
+        )
+        return {"status": "ok", "data_source": result}
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"status": "error", "error": str(e)})
+
+
+@app.patch("/data-sources/{source_id}/rename")
+async def rename_data_source(source_id: str, request: RenameSourceRequest):
+    try:
+        result = data_source_manager.rename_source(source_id, request.name)
         return {"status": "ok", "data_source": result}
     except Exception as e:
         return JSONResponse(status_code=400, content={"status": "error", "error": str(e)})
@@ -331,61 +230,112 @@ async def list_available_models():
     return {"status": "ok", "models": modelLoader.get_available_models()}
 
 
-@app.post("/query")
-async def query_travel_agent(query: QueryRequest):
+@app.post("/query", response_model=QueryResponse)
+async def query_travel_agent(query: QueryRequest, request: Request):
     try:
-        # Resolve active dynamic data source
         active_source = data_source_manager.get_source(query.source_id)
         active_db = active_source["db"] if active_source else None
-
-        graph = GeneralAgent(system_prompt=GENERAL_SYSTEM_PROMPT, model_provider='groq', model_id=query.model_id)
-        general_agent = graph()
-
-        print(f"Query: {query.question} | Source: {active_source.get('name') if active_source else 'default'} | Model: {query.model_id or 'default'}")
-        messages = {
-            "messages": [query.question]
-        }
-        agent_choice = use_agent(messages, general_agent)
-
-        if agent_choice == "use_web_search_agent":
-            print("Used web search agent")
-            graph = SearchAgent(system_prompt=SEARCH_SYSTEM_PROMPT, model_provider='groq', model_id=query.model_id)
-            search_agent = graph()
-            final_answer = use_agent(messages, search_agent)
-        elif agent_choice == "use_rag_agent":
-            print(f"Used Rag Agent with active db: {active_source.get('name') if active_source else 'default'}")
-            graph = RagAgent(system_prompt=RAG_SYSTEM_PROMPT, model_provider='openai', db=active_db, model_id=query.model_id)
-            rag_agent = graph()
-            final_answer = use_agent(messages, rag_agent)
-        elif agent_choice == 'use_crud_agent':
-            if query.admin:
-                print("Used CRUD Agent")
-                graph = CrudAgent(system_prompt=DASHBOARD_SYSTEM_PROMPT, model_provider='openai', model_id=query.model_id)
-                crud_agent = graph()
-                final_answer = use_agent(messages, crud_agent)
-            else:
-                final_answer = "User has no access to this information"
-        elif agent_choice == 'use_data_analysis_and_visualization_agent':
-            if query.admin:
-                print(f"data analysis and visualization agent used with active db: {active_source.get('name') if active_source else 'default'}")
-                graph = analysisAgent(system_prompt=ANALYSIS_AGENT_SYSTEM_PROMPT, model_provider="openai", db=active_db, model_id=query.model_id)
-                analysis_agent = graph()
-                final_answer = use_agent(messages, analysis_agent)
-            else:
-                final_answer = "User has no access to this information"
-
-        print("FINAL ANSWER FROM AGENT:", repr(final_answer))
-        answer_text, image_url, dashboard_data = parse_visualization_answer(final_answer)
-        payload = {
-            "answer": answer_text,
-            "agent": agent_choice,
-            "source_id": active_source["source_id"] if active_source else "default",
-            "source_name": active_source["name"] if active_source else "Default Database"
-        }
-        if image_url:
-            payload["image"] = image_url
-        if dashboard_data:
-            payload["dashboard"] = dashboard_data
-        return payload
+        print(
+            f"Query: {query.question} | Source: {active_source.get('name') if active_source else 'default'} | Model: {query.model_id or 'default'}"
+        )
+        return await run_query(
+            query,
+            active_source,
+            active_db,
+            use_agent_fn=use_agent,
+            request=request,
+        )
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.options("/query/stream")
+async def options_query_stream():
+    return JSONResponse(status_code=200, content={"status": "ok"})
+
+
+@app.post("/query/stream")
+async def query_travel_agent_stream(query: QueryRequest, request: Request):
+    active_source = data_source_manager.get_source(query.source_id)
+    active_db = active_source["db"] if active_source else None
+
+    async def event_generator():
+        queue: asyncio.Queue = asyncio.Queue()
+        cancel_scope = QueryCancelScope()
+
+        async def emit(event_type: str, payload: dict) -> None:
+            if cancel_scope.is_cancelled():
+                return
+            await queue.put(format_sse(event_type, payload))
+
+        async def runner() -> None:
+            token = current_cancel_scope.set(cancel_scope)
+            try:
+                print(
+                    f"[stream] Query: {query.question} | Model: {query.model_id or 'default'}"
+                )
+                result = await run_query_stream(
+                    query,
+                    active_source,
+                    active_db,
+                    emit=emit,
+                    request=request,
+                    cancel_scope=cancel_scope,
+                )
+                if not cancel_scope.is_cancelled():
+                    await queue.put(
+                        format_sse(
+                            "done",
+                            result.model_dump(mode="json"),
+                        )
+                    )
+            except asyncio.CancelledError:
+                print("[stream] Query cancelled — aborting LLM HTTP streams")
+                await queue.put(format_sse("error", {"error": "cancelled"}))
+            except Exception as e:
+                import traceback
+                print(f"\n{'!'*60}")
+                print(f"[stream ERROR] Unhandled exception in query runner: {type(e).__name__}: {e}")
+                traceback.print_exc()
+                print(f"{'!'*60}\n")
+                error_msg = str(e) or repr(e) or "Unknown stream error"
+                await queue.put(format_sse("error", {"error": error_msg, "type": type(e).__name__, "detail": traceback.format_exc()}))
+            finally:
+                current_cancel_scope.reset(token)
+                await cancel_scope.abort_http()
+                await queue.put(None)
+
+        task = asyncio.create_task(runner())
+        try:
+            while True:
+                if await request.is_disconnected():
+                    cancel_scope.cancel()
+                    await cancel_scope.abort_http()
+                    task.cancel()
+                    break
+                try:
+                    item = await asyncio.wait_for(queue.get(), timeout=0.15)
+                except asyncio.TimeoutError:
+                    continue
+                if item is None:
+                    break
+                yield item
+        finally:
+            cancel_scope.cancel()
+            if not task.done():
+                task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+            await cancel_scope.abort_http()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

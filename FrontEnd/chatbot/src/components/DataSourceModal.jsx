@@ -13,7 +13,9 @@ import {
   FileSpreadsheet,
   Layers,
   ArrowRight,
-  Server
+  Server,
+  Pencil,
+  Check
 } from "lucide-react";
 import { AI_API_URL } from "../config/api";
 
@@ -22,6 +24,10 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
   const [connString, setConnString] = useState("");
   const [customName, setCustomName] = useState("");
   const [files, setFiles] = useState([]);
+  const [datasetName, setDatasetName] = useState("");
+  const [editingSourceId, setEditingSourceId] = useState(null);
+  const [editingName, setEditingName] = useState("");
+  const [renameLoading, setRenameLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
@@ -32,6 +38,8 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
       fetchActiveSources();
       setError(null);
       setSuccessMsg(null);
+      setEditingSourceId(null);
+      setEditingName("");
     }
   }, [isOpen]);
 
@@ -79,9 +87,28 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
   };
 
   const handleFileChange = (e) => {
-    if (e.target.files) {
-      setFiles(Array.from(e.target.files));
+    if (e.target.files && e.target.files.length > 0) {
+      const selected = Array.from(e.target.files);
+      setFiles(selected);
       setError(null);
+
+      // Prepopulate default dataset name if user hasn't typed one yet
+      if (!datasetName.trim()) {
+        const firstBase = selected[0].name.replace(/\.[^/.]+$/, "");
+        if (selected.length > 1) {
+          setDatasetName(`${firstBase} & ${selected.length - 1} more`);
+        } else {
+          setDatasetName(firstBase);
+        }
+      }
+    }
+  };
+
+  const handleRemoveFile = (indexToRemove) => {
+    const updated = files.filter((_, idx) => idx !== indexToRemove);
+    setFiles(updated);
+    if (updated.length === 0) {
+      setDatasetName("");
     }
   };
 
@@ -101,6 +128,10 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
         formData.append("files", file);
       });
 
+      if (datasetName.trim()) {
+        formData.append("custom_name", datasetName.trim());
+      }
+
       const res = await axios.post(`${AI_API_URL}/data-sources/upload`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
@@ -110,6 +141,8 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
         setSuccessMsg(`Dataset prepared! Discovered ${newSource.tables.length} table(s).`);
         onSelectSource(newSource);
         fetchActiveSources();
+        setFiles([]);
+        setDatasetName("");
         setTimeout(() => {
           onClose();
         }, 1200);
@@ -118,6 +151,47 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
       setError(err.response?.data?.error || "Failed to process files. Please verify the file formats.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleStartRename = (e, source) => {
+    e.stopPropagation();
+    setEditingSourceId(source.source_id);
+    setEditingName(source.name);
+  };
+
+  const handleCancelRename = (e) => {
+    if (e) e.stopPropagation();
+    setEditingSourceId(null);
+    setEditingName("");
+  };
+
+  const handleSaveRename = async (e, sourceId) => {
+    if (e) e.stopPropagation();
+    if (!editingName.trim()) {
+      setError("Dataset name cannot be empty.");
+      return;
+    }
+    setRenameLoading(true);
+    try {
+      const res = await axios.patch(`${AI_API_URL}/data-sources/${sourceId}/rename`, {
+        name: editingName.trim(),
+      });
+      if (res.data?.data_source) {
+        const updated = res.data.data_source;
+        setActiveSources((prev) =>
+          prev.map((s) => (s.source_id === sourceId ? { ...s, name: updated.name } : s))
+        );
+        if ((activeSource?.source_id || "default") === sourceId) {
+          onSelectSource({ ...activeSource, name: updated.name });
+        }
+        setEditingSourceId(null);
+        setEditingName("");
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || "Failed to rename dataset.");
+    } finally {
+      setRenameLoading(false);
     }
   };
 
@@ -158,6 +232,7 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
             <Server size={14} />
             Database Connection
           </button>
+
           <button
             onClick={() => { setTab("upload"); setError(null); }}
             className={`py-2.5 px-3 text-[13px] font-medium border-b-2 transition-all flex items-center gap-2 ${
@@ -169,6 +244,7 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
             <Upload size={14} />
             Upload CSV / Excel
           </button>
+
           <button
             onClick={() => { setTab("active"); setError(null); fetchActiveSources(); }}
             className={`py-2.5 px-3 text-[13px] font-medium border-b-2 transition-all flex items-center gap-2 ${
@@ -243,7 +319,7 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
                     </>
                   ) : (
                     <>
-                      <CheckCircle2 size={16} />
+                      <Database size={16} />
                       <span>Connect Database</span>
                     </>
                   )}
@@ -275,24 +351,83 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
                     Choose CSV or Excel sheets
                   </span>
                   <span className="text-[12px] text-[#6B7280]">
-                    Drop .csv, .xlsx, or .xls files here
+                    Drop or select single or multiple .csv, .xlsx, or .xls files
                   </span>
                 </label>
               </div>
 
               {files.length > 0 && (
-                <div className="space-y-1.5 max-h-36 overflow-y-auto">
-                  {files.map((file, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between px-3 py-1.5 rounded bg-[#111319] border border-[#272B35] text-[12px]"
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] font-medium text-[#9CA3AF]">
+                      Selected Files ({files.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFiles([]);
+                        setDatasetName("");
+                      }}
+                      className="text-[11px] text-[#6B7280] hover:text-red-400 transition-colors"
                     >
-                      <span className="text-[#D1D5DB] truncate">{file.name}</span>
-                      <span className="text-[#6B7280]">{(file.size / 1024).toFixed(1)} KB</span>
-                    </div>
-                  ))}
+                      Clear all
+                    </button>
+                  </div>
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                    {files.map((file, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between px-3 py-1.5 rounded bg-[#111319] border border-[#272B35] text-[12px]"
+                      >
+                        <span className="text-[#D1D5DB] truncate max-w-[340px]">{file.name}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[#6B7280]">{(file.size / 1024).toFixed(1)} KB</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveFile(idx)}
+                            className="text-[#6B7280] hover:text-red-400 p-0.5 rounded transition-colors"
+                            title="Remove file"
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
+
+              {/* Custom Dataset Name Field */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[12.5px] font-medium text-[#D1D5DB]">
+                    Dataset Name {files.length > 1 ? "" : "(Optional)"}
+                  </label>
+                  {files.length > 1 && (
+                    <span className="text-[11px] text-blue-400 font-medium bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
+                      {files.length} files combined into 1 dataset
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  placeholder={
+                    files.length > 1
+                      ? "e.g. Sales & Customers Q3 (Custom dataset name)"
+                      : files.length === 1
+                      ? `e.g. Custom name (default: ${files[0].name.replace(/\.[^/.]+$/, "")})`
+                      : "e.g. Custom Dataset Name"
+                  }
+                  value={datasetName}
+                  onChange={(e) => setDatasetName(e.target.value)}
+                  className="w-full px-3.5 py-2 text-[13px] bg-[#0F1117] border border-[#272B35] rounded-md text-[#F3F4F6] placeholder-[#4B5563] focus:outline-none focus:border-blue-500 transition-colors"
+                />
+                <p className="text-[11.5px] text-[#6B7280] mt-1">
+                  {files.length > 1
+                    ? "All selected CSV/Excel files will be ingested into this dataset as individual SQL tables."
+                    : "Specify a custom display name for this dataset, or leave blank to use the file name."}
+                </p>
+              </div>
 
               <div className="pt-2">
                 <button
@@ -308,7 +443,9 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
                   ) : (
                     <>
                       <Upload size={16} />
-                      <span>Upload & Ingest Dataset</span>
+                      <span>
+                        Upload & Ingest {files.length > 1 ? `${files.length} Files` : "Dataset"}
+                      </span>
                     </>
                   )}
                 </button>
@@ -326,10 +463,14 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
               ) : (
                 activeSources.map((source) => {
                   const isSelected = (activeSource?.source_id || "default") === source.source_id;
+                  const isEditing = editingSourceId === source.source_id;
+                  const canRename = source.source_id !== "default";
+
                   return (
                     <div
                       key={source.source_id}
                       onClick={() => {
+                        if (isEditing) return;
                         onSelectSource(source);
                         onClose();
                       }}
@@ -339,9 +480,9 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
                           : "bg-[#111319] border-[#272B35] hover:border-[#3E4352]"
                       }`}
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 flex-1 min-w-0 mr-3">
                         <div
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                             source.type === "file"
                               ? "bg-amber-500/10 text-amber-400"
                               : "bg-blue-500/10 text-blue-400"
@@ -349,22 +490,74 @@ export default function DataSourceModal({ isOpen, onClose, activeSource, onSelec
                         >
                           {source.type === "file" ? <FileSpreadsheet size={16} /> : <Database size={16} />}
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[13.5px] font-medium text-[#F3F4F6]">{source.name}</span>
-                            {isSelected && (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-500/20 text-blue-400">
-                                ACTIVE
+                        <div className="flex-1 min-w-0">
+                          {isEditing ? (
+                            <div
+                              className="flex items-center gap-1.5"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="text"
+                                value={editingName}
+                                autoFocus
+                                onChange={(e) => setEditingName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") handleSaveRename(e, source.source_id);
+                                  if (e.key === "Escape") handleCancelRename(e);
+                                }}
+                                className="px-2 py-1 text-[13px] bg-[#0F1117] border border-blue-500 rounded text-[#F3F4F6] focus:outline-none w-full max-w-[220px]"
+                              />
+                              <button
+                                type="button"
+                                disabled={renameLoading || !editingName.trim()}
+                                onClick={(e) => handleSaveRename(e, source.source_id)}
+                                className="p-1 rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 transition-colors"
+                                title="Save name"
+                              >
+                                {renameLoading ? (
+                                  <Loader2 size={13} className="animate-spin" />
+                                ) : (
+                                  <Check size={13} />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleCancelRename}
+                                className="p-1 rounded bg-[#272B35] hover:bg-[#3E4352] text-[#9CA3AF] transition-colors"
+                                title="Cancel"
+                              >
+                                <X size={13} />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span className="text-[13.5px] font-medium text-[#F3F4F6] truncate">
+                                {source.name}
                               </span>
-                            )}
-                          </div>
-                          <p className="text-[11.5px] text-[#6B7280] mt-0.5">
+                              {canRename && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleStartRename(e, source)}
+                                  className="p-1 text-[#6B7280] hover:text-[#9CA3AF] rounded hover:bg-[#1E2230] transition-colors shrink-0"
+                                  title="Rename dataset"
+                                >
+                                  <Pencil size={12} />
+                                </button>
+                              )}
+                              {isSelected && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-500/20 text-blue-400 shrink-0">
+                                  ACTIVE
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          <p className="text-[11.5px] text-[#6B7280] mt-0.5 truncate">
                             {source.tables.length} table(s): {source.tables.slice(0, 3).join(", ")}
                             {source.tables.length > 3 ? "..." : ""}
                           </p>
                         </div>
                       </div>
-                      <ArrowRight size={14} className="text-[#6B7280]" />
+                      <ArrowRight size={14} className="text-[#6B7280] shrink-0" />
                     </div>
                   );
                 })

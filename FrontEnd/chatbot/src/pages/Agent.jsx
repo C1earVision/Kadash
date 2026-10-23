@@ -5,6 +5,7 @@ import {
   Trash2,
   Search,
   Send,
+  Square,
   MessageSquare,
   Package,
   LogOut,
@@ -25,7 +26,9 @@ import {
   ChevronDown,
   Zap,
   Cloud,
-  Monitor
+  Monitor,
+  History,
+  Plus
 } from "lucide-react";
 import { API_URL, AI_API_URL } from "../config/api";
 import { useNavigate } from "react-router-dom";
@@ -33,72 +36,17 @@ import MarkdownContent, { ChartImage } from "../components/MarkdownContent";
 import InteractiveDashboard from "../components/InteractiveDashboard";
 import DataSourceModal from "../components/DataSourceModal";
 import DataExplorer from "../components/DataExplorer";
-
-/* ─── Client-side fallback: extract dashboard JSON from raw text ─── */
-function tryExtractDashboard(text) {
-  if (!text || typeof text !== "string") return null;
-
-  const start = text.indexOf("{");
-  if (start === -1) return null;
-
-  let depth = 0;
-  let inString = false;
-  let escapeNext = false;
-
-  for (let i = start; i < text.length; i++) {
-    const ch = text[i];
-    if (escapeNext) { escapeNext = false; continue; }
-    if (ch === "\\") { escapeNext = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
-    if (inString) continue;
-    if (ch === "{") depth++;
-    else if (ch === "}") {
-      depth--;
-      if (depth === 0) {
-        try {
-          const parsed = JSON.parse(text.slice(start, i + 1));
-          if (parsed.dashboard && typeof parsed.dashboard === "object") {
-            return {
-              dashboard: parsed.dashboard,
-              content: parsed.content || parsed.answer || "",
-            };
-          }
-          if (Array.isArray(parsed.pages) || Array.isArray(parsed.charts)) {
-            return {
-              dashboard: parsed,
-              content: parsed.content || "",
-            };
-          }
-        } catch { /* not valid JSON, ignore */ }
-        return null;
-      }
-    }
-  }
-  return null;
-}
-
-/* ─── Clean dashboard accompanying text to show only Key Takeaways & Recommendations ─── */
-function cleanDashboardText(content) {
-  if (!content || typeof content !== "string") return "";
-  let text = content.trim();
-
-  // If there's a Key Takeaways header, slice from it to drop any intro fluff
-  const match = text.search(/(?:^|\n)(#{1,4}\s*Key Takeaways|\*\*Key Takeaways\*\*)/i);
-  if (match !== -1) {
-    text = text.slice(match).trim();
-  }
-
-  // Remove dashboard structure sections
-  text = text.replace(/#{1,4}\s*(?:Dashboard Overview|Dashboard Structure|Report Structure|Visualizations?|Dashboard Pages?|Pages? Breakdown|Report Pages?|Report Overview)[\s\S]*?(?=(?:\n#{1,4}|\Z))/gi, "");
-  // Remove "Page X: ..." lines
-  text = text.replace(/(?:^|\n)[*-]?\s*\**Page \d+[:\s\*\-][\s\S]*?(?=(?:\n[*-]|\n#{1,4}|\Z))/gi, "");
-  // Remove "Chart X: ..." lines
-  text = text.replace(/(?:^|\n)[*-]?\s*\**(?:Chart|Visual)\s*\d+[:\s\*\-][\s\S]*?(?=(?:\n[*-]|\n#{1,4}|\Z))/gi, "");
-  // Remove filler sentences
-  text = text.replace(/(?:^|\n)\s*(?:Here is the (?:interactive )?dashboard|Below is the (?:interactive )?dashboard|The (?:interactive )?dashboard below|This dashboard (?:features|consists of|contains|provides|includes|is structured)|We have generated a (?:multi-page )?dashboard|In this report, we present)[\s\S]*?(?:\.|\n)/gi, "");
-
-  return text.replace(/\n{3,}/g, "\n\n").trim();
-}
+import AgentThinking from "../components/AgentThinking";
+import RecentChatsView from "../components/RecentChatsView";
+import {
+  getRecentChats,
+  saveChatSession,
+  deleteChatSession,
+  clearAllChats,
+  generateChatTitle
+} from "../lib/chatStorage";
+import { normalizeQueryResponse } from "../types/agentApi";
+import { streamAgentQuery } from "../lib/queryStream";
 
 /* ─── URL normaliser (unchanged logic) ─── */
 function normalizeVisualizationUrl(imageUrl) {
@@ -390,19 +338,25 @@ const PROMPT_SUGGESTIONS = [
 /* ════════════════════════════════════════════════════════════════
    ChatView — agent chat interface
    ════════════════════════════════════════════════════════════════ */
-function ChatView({ activeSource, onOpenSourceModal, selectedModel }) {
+function ChatView({
+  activeSource,
+  onOpenSourceModal,
+  selectedModel,
+  messages,
+  setMessages,
+  currentChatId,
+  setCurrentChatId,
+  onSaveChatSession,
+  onNewChat,
+}) {
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const chatContainerRef = useRef(null);
+  const abortControllerRef = useRef(null);
+  const userStoppedRef = useRef(false);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
-
-  useEffect(() => {
-    localStorage.setItem("messages", JSON.stringify(["Context: "]));
-    localStorage.setItem("admin", JSON.stringify(false));
-  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -432,13 +386,44 @@ function ChatView({ activeSource, onOpenSourceModal, selectedModel }) {
   }, [input]);
 
   const handleResetChat = () => {
-    setMessages([]);
-    localStorage.setItem("messages", JSON.stringify(["Context: "]));
+    onNewChat();
+  };
+
+  const stopGeneration = () => {
+    userStoppedRef.current = true;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setLoading(false);
+    setMessages((prev) => {
+      const filtered = prev.filter((msg) => !msg.isLoading);
+      const finalMessages = [...filtered, { role: "AI_Message", content: "Generation stopped." }];
+      const sid = currentChatId || `chat_${Date.now()}`;
+      if (!currentChatId) setCurrentChatId(sid);
+      const firstUser = finalMessages.find((m) => m.role === "User_Message");
+      const title = generateChatTitle(firstUser?.content);
+      onSaveChatSession({
+        id: sid,
+        title,
+        createdAt: new Date().toISOString(),
+        source: activeSource,
+        modelId: selectedModel,
+        messages: finalMessages,
+        contextMessages: JSON.parse(localStorage.getItem("messages")) || [],
+      });
+      return finalMessages;
+    });
   };
 
   const sendMessage = async (customPrompt) => {
     const textToSend = typeof customPrompt === "string" ? customPrompt : input;
     if (!textToSend.trim() || loading) return;
+
+    const sessionId = currentChatId || `chat_${Date.now()}`;
+    if (!currentChatId) {
+      setCurrentChatId(sessionId);
+    }
 
     const newMessage = { role: "User_Message", content: textToSend };
     let storedMessages =
@@ -449,7 +434,15 @@ function ChatView({ activeSource, onOpenSourceModal, selectedModel }) {
     setMessages((prev) => [
       ...prev,
       newMessage,
-      { role: "AI_Message", content: "Searching...", isLoading: true },
+      {
+        role: "AI_Message",
+        content: "",
+        isLoading: true,
+        streaming: true,
+        thinking: "",
+        steps: [],
+        streamStatus: "Connecting…",
+      },
     ]);
     setInput("");
     if (inputRef.current) {
@@ -457,6 +450,9 @@ function ChatView({ activeSource, onOpenSourceModal, selectedModel }) {
     }
     setLoading(true);
     inputRef.current?.focus();
+
+    userStoppedRef.current = false;
+    abortControllerRef.current = new AbortController();
 
     try {
       const user = JSON.parse(localStorage.getItem("user"));
@@ -477,16 +473,87 @@ function ChatView({ activeSource, onOpenSourceModal, selectedModel }) {
         source_id: activeSource?.source_id,
         model_id: selectedModel || null,
       };
-      const res = await axios.post(`${AI_API_URL}/query`, payLoad);
+      let streamThinking = "";
+      let streamSteps = [];
+      let streamStatus = "Working…";
 
-      const imageUrl = normalizeVisualizationUrl(res.data.image);
+      const mergeThinking = (finalThinking, live) => {
+        if (!finalThinking) return live;
+        if (!live) return finalThinking;
+        return live.includes(finalThinking) ? live : `${live}\n\n---\n\n${finalThinking}`;
+      };
+
+      let payload = null;
+
+      await streamAgentQuery(AI_API_URL, payLoad, {
+        signal: abortControllerRef.current.signal,
+        onEvent: (type, data) => {
+          if (type === "thinking_delta" && data.text) {
+            streamThinking += data.text;
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.isLoading
+                  ? {
+                      ...msg,
+                      thinking: streamThinking,
+                      streamStatus: data.phase === "router" ? "Routing…" : streamStatus,
+                    }
+                  : msg
+              )
+            );
+          } else if (type === "step" && data.step) {
+            streamSteps = [...streamSteps, data.step];
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.isLoading
+                  ? {
+                      ...msg,
+                      steps: streamSteps,
+                      streamStatus: `${data.step.label}…`,
+                    }
+                  : msg
+              )
+            );
+          } else if (type === "status" && data.text) {
+            streamStatus = data.text;
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.isLoading ? { ...msg, streamStatus: data.text } : msg
+              )
+            );
+          } else if (type === "done") {
+            payload = normalizeQueryResponse(data);
+          } else if (type === "error") {
+            console.error("[stream error event received]", data);
+            if (data.error === "cancelled") {
+              const cancelled = new Error("cancelled");
+              cancelled.name = "AbortError";
+              throw cancelled;
+            }
+            const errorMsg = data.error || data.detail || data.raw || (typeof data === "string" ? data : JSON.stringify(data));
+            throw new Error(errorMsg || "Stream failed");
+          }
+        },
+      });
+
+      if (userStoppedRef.current) {
+        return;
+      }
+
+      if (!payload) {
+        throw new Error("No response from agent stream");
+      }
+
+      const imageUrl = normalizeVisualizationUrl(payload.image);
       const aiMessage = {
         role: "AI_Message",
-        content: res.data.answer,
-        agent: res.data.agent,
-        source_name: res.data.source_name,
+        content: payload.answer,
+        agent: payload.agent,
+        source_name: payload.source_name,
+        thinking: mergeThinking(payload.thinking, streamThinking),
+        steps: payload.steps?.length ? payload.steps : streamSteps,
         ...(imageUrl ? { image: imageUrl } : {}),
-        ...(res.data.dashboard ? { dashboard: res.data.dashboard } : {}),
+        ...(payload.dashboard ? { dashboard: payload.dashboard } : {}),
       };
 
       let updatedMessages =
@@ -496,21 +563,57 @@ function ChatView({ activeSource, onOpenSourceModal, selectedModel }) {
 
       setMessages((prev) => {
         const filtered = prev.filter((msg) => !msg.isLoading);
-        return [...filtered, aiMessage];
+        const finalMessages = [...filtered, aiMessage];
+
+        // Auto-save to recent chats
+        const firstUser = finalMessages.find((m) => m.role === "User_Message");
+        const title = generateChatTitle(firstUser?.content);
+        onSaveChatSession({
+          id: sessionId,
+          title,
+          createdAt: new Date().toISOString(),
+          source: activeSource,
+          modelId: selectedModel,
+          messages: finalMessages,
+          contextMessages: updatedMessages,
+        });
+
+        return finalMessages;
       });
     } catch (err) {
+      if (err.name === "AbortError" || axios.isCancel(err)) {
+        return;
+      }
+      console.error("[Agent sendMessage error]:", err);
+      const displayError = err.message || err.response?.data?.error || "Please try again.";
       setMessages((prev) => {
         const filtered = prev.filter((msg) => !msg.isLoading);
-        return [
+        const finalMessages = [
           ...filtered,
           {
             role: "AI_Message",
-            content: `Error connecting to AI. ${err.response?.data?.error || "Please try again."}`,
+            content: `AI Error: ${displayError}`,
           },
         ];
+
+        // Save session on error as well
+        const firstUser = finalMessages.find((m) => m.role === "User_Message");
+        const title = generateChatTitle(firstUser?.content);
+        onSaveChatSession({
+          id: sessionId,
+          title,
+          createdAt: new Date().toISOString(),
+          source: activeSource,
+          modelId: selectedModel,
+          messages: finalMessages,
+          contextMessages: JSON.parse(localStorage.getItem("messages")) || [],
+        });
+
+        return finalMessages;
       });
     } finally {
       setLoading(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -617,30 +720,21 @@ function ChatView({ activeSource, onOpenSourceModal, selectedModel }) {
                   <div className="flex justify-start">
                     <div className="w-full max-w-[95%]">
                       {msg.isLoading ? (
-                        <div className="flex items-center gap-2 text-[14px] text-[#6B7280]">
-                          <Loader2 size={15} className="animate-spin" />
-                          <span>Thinking…</span>
-                        </div>
+                        <AgentThinking
+                          thinking={msg.thinking}
+                          steps={msg.steps}
+                          streaming
+                          statusText={msg.streamStatus || "Thinking…"}
+                        />
                       ) : (() => {
-                          // Determine dashboard spec — use server-provided or extract from content
-                          const extracted = tryExtractDashboard(msg.content);
-                          const dashboardSpec = msg.dashboard || extracted?.dashboard || (extracted && !extracted.dashboard ? extracted : null);
-                          // If dashboard was extracted from content, use extracted content or strip raw JSON
-                          let displayContent = msg.content;
-                          if (extracted?.content) {
-                            displayContent = extracted.content;
-                          } else if (!msg.dashboard && dashboardSpec && typeof msg.content === "string") {
-                            const jsonStart = msg.content.indexOf("{");
-                            if (jsonStart !== -1) {
-                              displayContent = msg.content.slice(0, jsonStart).trim();
-                            }
-                          }
-                          // When displaying a dashboard, ensure text only contains key takeaways and recommendations
-                          if (dashboardSpec && displayContent) {
-                            displayContent = cleanDashboardText(displayContent);
-                          }
+                          const dashboardSpec = msg.dashboard || null;
+                          const displayContent = msg.content;
                           return (
                             <>
+                              <AgentThinking
+                                thinking={msg.thinking}
+                                steps={msg.steps}
+                              />
                               {displayContent && (
                                 <MarkdownContent content={displayContent} />
                               )}
@@ -711,13 +805,13 @@ function ChatView({ activeSource, onOpenSourceModal, selectedModel }) {
             style={{ maxHeight: "200px" }}
           />
           <button
-            onClick={() => sendMessage()}
-            disabled={loading || !input.trim()}
+            onClick={() => (loading ? stopGeneration() : sendMessage())}
+            disabled={!input.trim() && !loading}
             className="flex items-center justify-center w-9 h-9 flex-shrink-0 rounded-lg bg-[#2563EB] text-white hover:bg-[#1D4ED8] disabled:opacity-40 disabled:cursor-not-allowed transition-colors mb-[1px]"
-            title="Send message"
+            title={loading ? "Stop generation" : "Send message"}
           >
             {loading ? (
-              <Loader2 size={16} className="animate-spin" />
+              <Square size={16} />
             ) : (
               <Send size={16} />
             )}
@@ -735,6 +829,10 @@ function ChatView({ activeSource, onOpenSourceModal, selectedModel }) {
 export default function App() {
   const [page, setPage] = useState("agent");
   const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [currentChatId, setCurrentChatId] = useState(null);
+  const [recentChats, setRecentChats] = useState(() => getRecentChats());
+
   const [activeSource, setActiveSource] = useState(() => {
     try {
       return (
@@ -762,6 +860,13 @@ export default function App() {
   const modelDropdownRef = useRef(null);
 
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!localStorage.getItem("messages")) {
+      localStorage.setItem("messages", JSON.stringify(["Context: "]));
+    }
+    localStorage.setItem("admin", JSON.stringify(false));
+  }, []);
 
   // Fetch available models on mount
   useEffect(() => {
@@ -810,6 +915,48 @@ export default function App() {
     }
   };
 
+  const handleSaveChatSession = (session) => {
+    const updated = saveChatSession(session);
+    setRecentChats(updated);
+  };
+
+  const handleSelectChat = (chat) => {
+    setCurrentChatId(chat.id);
+    setMessages(chat.messages || []);
+    if (chat.contextMessages) {
+      localStorage.setItem("messages", JSON.stringify(chat.contextMessages));
+    }
+    if (chat.source) {
+      handleSelectSource(chat.source);
+    }
+    if (chat.modelId) {
+      setSelectedModel(chat.modelId);
+      localStorage.setItem("selectedModel", chat.modelId);
+    }
+    setPage("agent");
+  };
+
+  const handleDeleteChat = (chatId) => {
+    const updated = deleteChatSession(chatId);
+    setRecentChats(updated);
+    if (currentChatId === chatId) {
+      handleNewChat();
+    }
+  };
+
+  const handleClearAllChats = () => {
+    clearAllChats();
+    setRecentChats([]);
+    handleNewChat();
+  };
+
+  const handleNewChat = () => {
+    setCurrentChatId(null);
+    setMessages([]);
+    localStorage.setItem("messages", JSON.stringify(["Context: "]));
+    setPage("agent");
+  };
+
   const user = (() => {
     try {
       const data = JSON.parse(localStorage.getItem("user"));
@@ -828,155 +975,251 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-[#0F1117] text-[#F3F4F6] overflow-hidden">
-      {/* ─── Sidebar ─── */}
-      <aside className="w-56 flex-shrink-0 flex flex-col border-r border-[#1E2230] bg-[#0F1117]">
-        {/* Logo */}
-        <div className="px-5 py-5 flex items-center justify-between">
-          <span className="text-[17px] font-semibold tracking-tight text-[#F3F4F6]">
-            Kadash
-          </span>
-          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-            BI
-          </span>
-        </div>
-
-        {/* Nav */}
-        <nav className="flex-1 px-3">
-          <div className="space-y-1">
-            <button
-              onClick={() => setPage("agent")}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors cursor-pointer ${
-                page === "agent"
-                  ? "bg-[#2563EB]/10 text-[#3B82F6]"
-                  : "text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820]"
-              }`}
-            >
-              <MessageSquare size={16} />
-              AI Agent
-            </button>
-            <button
-              onClick={() => setPage("explorer")}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors cursor-pointer ${
-                page === "explorer"
-                  ? "bg-[#2563EB]/10 text-[#3B82F6]"
-                  : "text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820]"
-              }`}
-            >
-              <Database size={16} />
-              Data Explorer
-            </button>
-            <button
-              onClick={() => setIsSourceModalOpen(true)}
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820] transition-colors cursor-pointer"
-            >
-              <HardDrive size={16} />
-              Data Sources
-            </button>
+      {/* ─── Sidebar (ChatGPT / Claude style) ─── */}
+      <aside className="w-64 flex-shrink-0 flex flex-col h-full border-r border-[#1E2230] bg-[#0F1117]">
+        {/* Header: Logo + New Chat */}
+        <div className="p-3 border-b border-[#1E2230]/60 space-y-2.5 flex-shrink-0">
+          <div className="flex items-center justify-between px-1">
+            <span className="text-[16px] font-semibold tracking-tight text-[#F3F4F6]">
+              Kadash
+            </span>
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+              BI
+            </span>
           </div>
 
-          {/* Model Selector */}
-          <div className="px-3 mt-4">
-            <div className="text-[10.5px] font-medium text-[#6B7280] uppercase tracking-wider px-3 mb-2">
-              AI Model
+          <button
+            onClick={handleNewChat}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-[#151820] hover:bg-[#1C202C] border border-[#272B35] hover:border-blue-500/40 text-[13px] font-medium text-[#F3F4F6] transition-all cursor-pointer group shadow-sm"
+          >
+            <div className="flex items-center gap-2">
+              <Plus size={15} className="text-blue-400 group-hover:scale-110 transition-transform" />
+              <span>New Chat</span>
             </div>
-            <div className="relative" ref={modelDropdownRef}>
-              <button
-                onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
-                className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-[#151820] border border-[#272B35] hover:border-[#3B82F6]/40 text-[13px] text-[#E5E7EB] transition-all cursor-pointer"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  {(() => {
-                    const current = availableModels.find(m => m.id === selectedModel);
-                    const provider = current?.provider || "";
-                    return (
-                      <>
-                        <span className={`flex-shrink-0 w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold ${
-                          provider === "ollama"
-                            ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                            : provider === "groq"
-                              ? "bg-orange-500/15 text-orange-400 border border-orange-500/30"
-                              : "bg-violet-500/15 text-violet-400 border border-violet-500/30"
-                        }`}>
-                          {provider === "ollama" ? <Monitor size={11} /> : provider === "groq" ? <Zap size={11} /> : <Cloud size={11} />}
-                        </span>
-                        <span className="truncate">{current?.name || "Select Model"}</span>
-                      </>
-                    );
-                  })()}
-                </div>
-                <ChevronDown size={14} className={`flex-shrink-0 text-[#6B7280] transition-transform ${isModelDropdownOpen ? "rotate-180" : ""}`} />
-              </button>
+            <span className="text-[10px] text-[#6B7280] font-mono border border-[#272B35] rounded px-1.5 py-0.5">
+              +
+            </span>
+          </button>
+        </div>
 
-              {isModelDropdownOpen && (
-                <div className="absolute left-0 right-0 top-full mt-1 bg-[#151820] border border-[#272B35] rounded-lg shadow-xl shadow-black/40 z-50 overflow-hidden">
-                  {availableModels.map((model) => (
+        {/* Navigation & Tools */}
+        <div className="px-3 py-2 border-b border-[#1E2230]/60 space-y-1 flex-shrink-0">
+          <button
+            onClick={() => setPage("agent")}
+            className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-[13px] font-medium transition-colors cursor-pointer ${
+              page === "agent" && !currentChatId
+                ? "bg-[#2563EB]/10 text-[#3B82F6]"
+                : "text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820]"
+            }`}
+          >
+            <MessageSquare size={15} />
+            <span>AI Agent</span>
+          </button>
+
+          <button
+            onClick={() => setPage("explorer")}
+            className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-[13px] font-medium transition-colors cursor-pointer ${
+              page === "explorer"
+                ? "bg-[#2563EB]/10 text-[#3B82F6]"
+                : "text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820]"
+            }`}
+          >
+            <Database size={15} />
+            <span>Data Explorer</span>
+          </button>
+
+          <button
+            onClick={() => setIsSourceModalOpen(true)}
+            className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-md text-[13px] font-medium text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820] transition-colors cursor-pointer"
+          >
+            <HardDrive size={15} />
+            <span>Data Sources</span>
+          </button>
+        </div>
+
+        {/* AI Model Selector */}
+        <div className="px-3 py-2.5 border-b border-[#1E2230]/60 flex-shrink-0">
+          <div className="text-[10px] font-medium text-[#6B7280] uppercase tracking-wider px-1 mb-1.5">
+            AI Model
+          </div>
+          <div className="relative" ref={modelDropdownRef}>
+            <button
+              onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-[#151820] border border-[#272B35] hover:border-[#3B82F6]/40 text-[12.5px] text-[#E5E7EB] transition-all cursor-pointer"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                {(() => {
+                  const current = availableModels.find(m => m.id === selectedModel);
+                  const provider = current?.provider || "";
+                  const badgeClass =
+                    provider === "ollama"
+                      ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                      : provider === "groq"
+                        ? "bg-orange-500/15 text-orange-400 border border-orange-500/30"
+                        : provider === "gemini" || provider === "google"
+                          ? "bg-sky-500/15 text-sky-400 border border-sky-500/30"
+                          : "bg-violet-500/15 text-violet-400 border border-violet-500/30";
+                  const badgeIcon =
+                    provider === "ollama" ? (
+                      <Monitor size={10} />
+                    ) : provider === "groq" ? (
+                      <Zap size={10} />
+                    ) : provider === "gemini" || provider === "google" ? (
+                      <Sparkles size={10} />
+                    ) : (
+                      <Cloud size={10} />
+                    );
+                  return (
+                    <>
+                      <span className={`flex-shrink-0 w-4.5 h-4.5 rounded flex items-center justify-center text-[9px] font-bold ${badgeClass}`}>
+                        {badgeIcon}
+                      </span>
+                      <span className="truncate">{current?.name || "Select Model"}</span>
+                    </>
+                  );
+                })()}
+              </div>
+              <ChevronDown size={13} className={`flex-shrink-0 text-[#6B7280] transition-transform ${isModelDropdownOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {isModelDropdownOpen && (
+              <div className="absolute left-0 right-0 top-full mt-1 bg-[#151820] border border-[#272B35] rounded-lg shadow-xl shadow-black/40 z-50 overflow-hidden">
+                {availableModels.map((model) => {
+                  const mBadgeClass =
+                    model.provider === "ollama"
+                      ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                      : model.provider === "groq"
+                        ? "bg-orange-500/15 text-orange-400 border border-orange-500/30"
+                        : model.provider === "gemini" || model.provider === "google"
+                          ? "bg-sky-500/15 text-sky-400 border border-sky-500/30"
+                          : "bg-violet-500/15 text-violet-400 border border-violet-500/30";
+                  const mBadgeIcon =
+                    model.provider === "ollama" ? (
+                      <Monitor size={10} />
+                    ) : model.provider === "groq" ? (
+                      <Zap size={10} />
+                    ) : model.provider === "gemini" || model.provider === "google" ? (
+                      <Sparkles size={10} />
+                    ) : (
+                      <Cloud size={10} />
+                    );
+                  return (
                     <button
                       key={model.id}
                       onClick={() => handleModelSelect(model.id)}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-[13px] transition-colors cursor-pointer ${
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-[12.5px] transition-colors cursor-pointer ${
                         model.id === selectedModel
                           ? "bg-[#2563EB]/10 text-blue-400"
                           : "text-[#D1D5DB] hover:bg-[#1E2230] hover:text-[#F3F4F6]"
                       }`}
                     >
-                      <span className={`flex-shrink-0 w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold ${
-                        model.provider === "ollama"
-                          ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                          : model.provider === "groq"
-                            ? "bg-orange-500/15 text-orange-400 border border-orange-500/30"
-                            : "bg-violet-500/15 text-violet-400 border border-violet-500/30"
-                      }`}>
-                        {model.provider === "ollama" ? <Monitor size={11} /> : model.provider === "groq" ? <Zap size={11} /> : <Cloud size={11} />}
+                      <span className={`flex-shrink-0 w-4.5 h-4.5 rounded flex items-center justify-center text-[9px] font-bold ${mBadgeClass}`}>
+                        {mBadgeIcon}
                       </span>
-                      <div className="flex flex-col items-start min-w-0">
-                        <span className="truncate w-full">{model.name}</span>
-                        <span className="text-[10px] text-[#6B7280]">
-                          {model.provider === "ollama" ? "Local" : model.provider === "groq" ? "Groq Cloud" : "OpenAI"}
-                        </span>
-                      </div>
+                      <span className="truncate w-full text-left">{model.name}</span>
                       {model.id === selectedModel && (
-                        <Check size={14} className="flex-shrink-0 ml-auto text-blue-400" />
+                        <Check size={13} className="flex-shrink-0 ml-auto text-blue-400" />
                       )}
                     </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </nav>
+        </div>
 
-        {/* Active Source Footer Card */}
-        <div className="px-3 pb-3">
+        {/* Recent Chats on Sidebar (ChatGPT / Claude style) */}
+        <div className="flex-1 overflow-y-auto px-2 py-3 min-h-0">
+          <div className="flex items-center justify-between px-2 mb-1.5">
+            <span className="text-[10px] font-semibold text-[#6B7280] uppercase tracking-wider">
+              Recent Chats
+            </span>
+            {recentChats.length > 0 && (
+              <span className="text-[10px] text-[#6B7280] font-medium">
+                {recentChats.length} / 10
+              </span>
+            )}
+          </div>
+
+          {recentChats.length === 0 ? (
+            <div className="px-2 py-6 text-center">
+              <p className="text-[12px] text-[#6B7280]">No recent chats</p>
+              <p className="text-[11px] text-[#4B5563] mt-0.5">Your conversations will appear here</p>
+            </div>
+          ) : (
+            <div className="space-y-0.5">
+              {recentChats.map((chat) => {
+                const isActive = currentChatId === chat.id && page === "agent";
+                return (
+                  <div
+                    key={chat.id}
+                    onClick={() => handleSelectChat(chat)}
+                    className={`group flex items-center justify-between px-2.5 py-2 rounded-lg text-[13px] transition-all cursor-pointer ${
+                      isActive
+                        ? "bg-blue-600/15 text-blue-400 font-medium"
+                        : "text-[#9CA3AF] hover:text-[#F3F4F6] hover:bg-[#151820]"
+                    }`}
+                    title={chat.title}
+                  >
+                    <div className="flex items-center gap-2 min-w-0 flex-1 mr-1">
+                      <MessageSquare
+                        size={14}
+                        className={`flex-shrink-0 ${
+                          isActive ? "text-blue-400" : "text-[#6B7280] group-hover:text-[#9CA3AF]"
+                        }`}
+                      />
+                      <span className="truncate">{chat.title || "Conversation"}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteChat(chat.id);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-1 text-[#6B7280] hover:text-red-400 rounded hover:bg-[#1E2230] transition-all flex-shrink-0"
+                      title="Delete conversation"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Footer: Connected Source + User Sign Out */}
+        <div className="p-3 border-t border-[#1E2230] space-y-2 flex-shrink-0">
           <div
             onClick={() => setIsSourceModalOpen(true)}
-            className="p-2.5 rounded-lg bg-[#151820] border border-[#272B35] hover:border-blue-500/40 cursor-pointer transition-all"
+            className="p-2 rounded-lg bg-[#151820] border border-[#272B35] hover:border-blue-500/40 cursor-pointer transition-all"
           >
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10.5px] font-medium text-[#6B7280] uppercase tracking-wider">
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="text-[10px] font-medium text-[#6B7280] uppercase tracking-wider">
                 Connected Source
               </span>
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
             </div>
             <p className="text-[12px] font-medium text-[#E5E7EB] truncate">
               {activeSource?.name || "Default Database"}
             </p>
           </div>
-        </div>
 
-        {/* Footer */}
-        <div className="px-3 pb-4 border-t border-[#1E2230] pt-3">
-          {user && (
-            <div className="px-3 py-1.5 mb-1">
-              <p className="text-[12px] text-[#6B7280] truncate">{user.Email}</p>
-            </div>
-          )}
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820] transition-colors cursor-pointer"
-          >
-            <LogOut size={16} />
-            Sign out
-          </button>
+          <div className="pt-0.5 flex items-center justify-between">
+            {user && (
+              <p className="text-[11.5px] text-[#6B7280] truncate max-w-[130px]" title={user.Email}>
+                {user.Email}
+              </p>
+            )}
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 px-2 py-1 rounded text-[12px] text-[#9CA3AF] hover:text-[#D1D5DB] hover:bg-[#151820] transition-colors cursor-pointer ml-auto"
+              title="Sign out"
+            >
+              <LogOut size={14} />
+              <span>Sign out</span>
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -987,6 +1230,12 @@ export default function App() {
             activeSource={activeSource}
             onOpenSourceModal={() => setIsSourceModalOpen(true)}
             selectedModel={selectedModel}
+            messages={messages}
+            setMessages={setMessages}
+            currentChatId={currentChatId}
+            setCurrentChatId={setCurrentChatId}
+            onSaveChatSession={handleSaveChatSession}
+            onNewChat={handleNewChat}
           />
         ) : (
           <DataExplorer

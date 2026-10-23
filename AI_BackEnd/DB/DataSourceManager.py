@@ -112,7 +112,7 @@ class DataSourceManager:
 
         # Connect through LangChain SQLDatabase
         db = SQLDatabase.from_uri(f"duckdb:///{db_path.replace(chr(92), '/')}")
-        display_name = custom_name or (files[0]["filename"] if files else "Uploaded Dataset")
+        display_name = (custom_name.strip() if custom_name and custom_name.strip() else None) or (files[0]["filename"] if files else "Uploaded Dataset")
         schema_meta = self._inspect_database_schema(db, table_names)
 
         source_record = {
@@ -130,6 +130,23 @@ class DataSourceManager:
             "type": "file",
             "tables": table_names,
             "schema": schema_meta,
+        }
+
+    def rename_source(self, source_id: str, new_name: str) -> Dict[str, Any]:
+        if source_id == "default":
+            raise ValueError("The default database cannot be renamed.")
+        if source_id not in self.sources:
+            raise ValueError(f"Data source '{source_id}' not found.")
+        clean_name = new_name.strip()
+        if not clean_name:
+            raise ValueError("Dataset name cannot be empty.")
+        self.sources[source_id]["name"] = clean_name
+        return {
+            "source_id": source_id,
+            "name": clean_name,
+            "type": self.sources[source_id]["type"],
+            "tables": self.sources[source_id]["tables"],
+            "schema": self.sources[source_id].get("schema", {}),
         }
 
     def get_source(self, source_id: Optional[str] = None) -> Optional[Dict[str, Any]]:

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   ResponsiveContainer,
   BarChart,
@@ -22,7 +22,22 @@ import {
   X,
   BarChart2,
   Table as TableIcon,
+  MapPin,
+  SlidersHorizontal,
+  FileSpreadsheet,
 } from "lucide-react";
+import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import * as XLSX from "xlsx";
+
+/* ─── Fix Leaflet default marker icons (bundler breaks asset paths) ─── */
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+});
 
 /* ─── Chart color palette — muted, professional, distinguishable ─── */
 const COLORS = [
@@ -35,6 +50,50 @@ const COLORS = [
   "#98C379",
   "#D19A66",
 ];
+
+/* ─── Helpers for KPI and Label Formatting ─── */
+export function formatKpiDisplay(val) {
+  if (val === null || val === undefined) return "—";
+  if (typeof val === "number") return val.toLocaleString();
+  if (typeof val === "object") {
+    const inner =
+      val.value ??
+      val.val ??
+      val.amount ??
+      val.total ??
+      val.count ??
+      val.score ??
+      Object.values(val)[0];
+    return formatKpiDisplay(inner);
+  }
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (
+      (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+      (trimmed.startsWith("{'") && trimmed.endsWith("}"))
+    ) {
+      try {
+        const parsed = JSON.parse(trimmed.replace(/'/g, '"'));
+        return formatKpiDisplay(parsed);
+      } catch {
+        /* ignore */
+      }
+    }
+    return trimmed;
+  }
+  return String(val);
+}
+
+export function formatCellLabel(val, key = "") {
+  if (val === null || val === undefined) return "—";
+  const str = String(val);
+  if (str.length >= 20 && !str.includes(" ") && /^[a-fA-F0-9-]+$/.test(str)) {
+    const prefix = key.replace(/_id$/i, "").replace(/id$/i, "") || "Item";
+    const cap = prefix.charAt(0).toUpperCase() + prefix.slice(1);
+    return `${cap} #${str.slice(0, 8)}…`;
+  }
+  return str;
+}
 
 /* ─── Normalizer for Backward & Forward Compatibility ─── */
 function normalizeDashboardSpec(spec) {
@@ -49,7 +108,10 @@ function normalizeDashboardSpec(spec) {
         name: p.name || `Page ${idx + 1}`,
         summary: p.summary || p.description || "",
         insights: Array.isArray(p.insights) ? p.insights : [],
-        kpis: Array.isArray(p.kpis) ? p.kpis : [],
+        kpis: (Array.isArray(p.kpis) ? p.kpis : []).map((k) => ({
+          ...k,
+          value: formatKpiDisplay(k?.value),
+        })),
         charts: Array.isArray(p.charts) ? p.charts : [],
       })),
     };
@@ -69,7 +131,10 @@ function normalizeDashboardSpec(spec) {
           name: spec.title || "Overview",
           summary: spec.description || "",
           insights: legacyInsights,
-          kpis: legacyKpis,
+          kpis: legacyKpis.map((k) => ({
+            ...k,
+            value: formatKpiDisplay(k?.value),
+          })),
           charts: legacyCharts,
         },
       ],
@@ -129,6 +194,7 @@ const X_AXIS_PROPS = {
   tickLine: false,
   axisLine: false,
   tickMargin: 8,
+  tickFormatter: (v) => formatCellLabel(v),
 };
 const Y_AXIS_PROPS = {
   stroke: "#4A4E58",
@@ -149,6 +215,410 @@ const LEGEND_PROPS = {
   iconSize: 6,
 };
 const MARGIN = { top: 8, right: 8, left: 0, bottom: 0 };
+
+/* ─── Geographic Coordinate Resolution (Brazilian States/Cities, US, Global) ─── */
+const BRAZIL_STATES_GEO = {
+  SP: [-23.5505, -46.6333], RJ: [-22.9068, -43.1729], MG: [-18.5122, -44.5550],
+  RS: [-30.0346, -51.2177], PR: [-25.2521, -52.0215], SC: [-27.2423, -50.2189],
+  BA: [-12.5797, -41.7007], DF: [-15.7998, -47.8645], GO: [-15.8270, -49.8362],
+  ES: [-19.1834, -40.3089], PE: [-8.8137, -36.9541],  CE: [-5.4984, -39.3206],
+  PA: [-1.9981, -54.9306],  MT: [-12.6800, -56.9200], MA: [-5.4200, -45.4400],
+  MS: [-20.7722, -54.7852], PB: [-7.2400, -36.7800],  RN: [-5.7945, -36.5654],
+  PI: [-7.7183, -42.7289],  AL: [-9.5713, -36.7820],  SE: [-10.5741, -37.3857],
+  TO: [-10.1753, -48.2982], RO: [-11.5057, -63.5806], AM: [-3.4168, -65.8561],
+  AC: [-9.0238, -70.8120],  AP: [0.9020, -52.0030],   RR: [2.7376, -62.0751],
+};
+
+const BRAZIL_CITIES_GEO = {
+  "sao paulo": [-23.5505, -46.6333], "rio de janeiro": [-22.9068, -43.1729],
+  "belo horizonte": [-19.9167, -43.9345], "brasilia": [-15.7975, -47.8919],
+  "salvador": [-12.9714, -38.5014], "curitiba": [-25.4284, -49.2733],
+  "fortaleza": [-3.7319, -38.5267], "recife": [-8.0476, -34.8770],
+  "porto alegre": [-30.0346, -51.2177], "manaus": [-3.1190, -60.0217],
+  "belem": [-1.4558, -48.4902], "goiania": [-16.6869, -49.2648],
+  "guarulhos": [-23.4542, -46.5333], "campinas": [-22.9099, -47.0626],
+  "sao luis": [-2.5307, -44.3068], "maceio": [-9.6658, -35.7350],
+  "duque de caxias": [-22.7858, -43.3117], "natal": [-5.7945, -35.2110],
+  "campo grande": [-20.4697, -54.6201], "teresina": [-5.0892, -42.8016],
+  "joao pessoa": [-7.1153, -34.8610], "florianopolis": [-27.5954, -48.5480],
+  "santos": [-23.9608, -46.3336], "niteroi": [-22.8832, -43.1034],
+  "joinville": [-26.3044, -48.8464], "londrina": [-23.3045, -51.1696],
+  "caxias do sul": [-29.1678, -51.1794], "juiz de fora": [-21.7642, -43.3503],
+  "maringa": [-23.4205, -51.9333], "blumenau": [-26.9194, -49.0661],
+  "piracicaba": [-22.7253, -47.6492], "bauru": [-22.3147, -49.0606],
+  "jundiai": [-23.1857, -46.8978], "sao carlos": [-22.0175, -47.8908],
+};
+
+const COUNTRIES_GEO = {
+  US: [37.0902, -95.7129], USA: [37.0902, -95.7129], "UNITED STATES": [37.0902, -95.7129],
+  GB: [55.3781, -3.4360],  UK: [55.3781, -3.4360],  "UNITED KINGDOM": [55.3781, -3.4360],
+  CA: [56.1304, -106.3468], CANADA: [56.1304, -106.3468],
+  DE: [51.1657, 10.4515],  GERMANY: [51.1657, 10.4515],
+  FR: [46.2276, 2.2137],   FRANCE: [46.2276, 2.2137],
+  BR: [-14.2350, -51.9253], BRAZIL: [-14.2350, -51.9253], BRASIL: [-14.2350, -51.9253],
+  JP: [36.2048, 138.2529], JAPAN: [36.2048, 138.2529],
+  CN: [35.8617, 104.1954], CHINA: [35.8617, 104.1954],
+  IN: [20.5937, 78.9629],  INDIA: [20.5937, 78.9629],
+  AU: [-25.2744, 133.7751], AUSTRALIA: [-25.2744, 133.7751],
+  MX: [23.6345, -102.5528], MEXICO: [23.6345, -102.5528],
+  ES: [40.4637, -3.7492],  SPAIN: [40.4637, -3.7492],
+  IT: [41.8719, 12.5674],  ITALY: [41.8719, 12.5674],
+  NL: [52.1326, 5.2913],   NETHERLANDS: [52.1326, 5.2913],
+  SE: [60.1282, 18.6435],  SWEDEN: [60.1282, 18.6435],
+  CH: [46.8182, 8.2275],   SWITZERLAND: [46.8182, 8.2275],
+  BE: [50.5039, 4.4699],   BELGIUM: [50.5039, 4.4699],
+  AT: [47.5162, 14.5501],  AUSTRIA: [47.5162, 14.5501],
+  PL: [51.9194, 19.1451],  POLAND: [51.9194, 19.1451],
+  NO: [60.4720, 8.4689],   NORWAY: [60.4720, 8.4689],
+  DK: [56.2639, 9.5018],   DENMARK: [56.2639, 9.5018],
+  FI: [61.9241, 25.7482],  FINLAND: [61.9241, 25.7482],
+  IE: [53.1424, -7.6921],  IRELAND: [53.1424, -7.6921],
+  PT: [39.3999, -8.2245],  PORTUGAL: [39.3999, -8.2245],
+  GR: [39.0742, 21.8243],  GREECE: [39.0742, 21.8243],
+  TR: [38.9637, 35.2433],  TURKEY: [38.9637, 35.2433],
+  SA: [23.8859, 45.0792],  "SAUDI ARABIA": [23.8859, 45.0792],
+  AE: [23.4241, 53.8478],  UAE: [23.4241, 53.8478],
+  EG: [26.8206, 30.8025],  EGYPT: [26.8206, 30.8025],
+  ZA: [-30.5595, 22.9375], "SOUTH AFRICA": [-30.5595, 22.9375],
+  SG: [1.3521, 103.8198],  SINGAPORE: [1.3521, 103.8198],
+  KR: [35.9078, 127.7669], "SOUTH KOREA": [35.9078, 127.7669],
+  NZ: [-40.9006, 174.8860], "NEW ZEALAND": [-40.9006, 174.8860],
+  AR: [-38.4161, -63.6167], ARGENTINA: [-38.4161, -63.6167],
+  CL: [-35.6751, -71.5430], CHILE: [-35.6751, -71.5430],
+  CO: [4.5709, -74.2973],  COLOMBIA: [4.5709, -74.2973],
+};
+
+const US_STATES_GEO = {
+  AL: [32.8066, -86.7911], AK: [61.3707, -152.4044], AZ: [33.7297, -111.4312], AR: [34.9697, -92.3731],
+  CA: [36.1162, -119.6815], CO: [39.0598, -105.3111], CT: [41.5977, -72.7553], DE: [39.3185, -75.5071],
+  FL: [27.7662, -81.6867], GA: [33.0406, -83.6430], HI: [21.0943, -157.4983], ID: [44.2404, -114.4788],
+  IL: [40.3494, -88.9861], IN: [39.8494, -86.2582], IA: [42.0115, -93.2105], KS: [38.5266, -96.7264],
+  KY: [37.6681, -84.6700], LA: [31.1695, -91.8678], ME: [44.6939, -69.3819], MD: [39.0639, -76.8021],
+  MA: [42.2301, -71.5301], MI: [43.3266, -84.5360], MN: [45.6944, -93.9001], MS: [32.7416, -89.6786],
+  MO: [38.4560, -92.2883], MT: [46.9219, -110.4543], NE: [41.1253, -98.2680], NV: [38.3135, -117.0553],
+  NH: [43.4524, -71.5638], NJ: [40.2989, -74.5210], NM: [34.8405, -106.2484], NY: [42.1657, -74.9480],
+  NC: [35.6300, -79.8064], ND: [47.5289, -99.7840], OH: [40.3887, -82.7649], OK: [35.5653, -96.9289],
+  OR: [44.5720, -122.0709], PA: [40.5907, -77.2097], RI: [41.6808, -71.5117], SC: [33.8568, -80.9450],
+  SD: [44.2997, -99.4388], TN: [35.7478, -86.6923], TX: [31.0544, -97.5634], UT: [40.1500, -111.8624],
+  VT: [44.0458, -72.7106], VA: [37.7693, -78.1699], WA: [47.4009, -121.4904], WV: [38.4912, -80.9544],
+  WI: [44.2685, -89.6165], WY: [42.7559, -107.3024],
+  CALIFORNIA: [36.1162, -119.6815], TEXAS: [31.0544, -97.5634], FLORIDA: [27.7662, -81.6867],
+  "NEW YORK": [42.1657, -74.9480], ILLINOIS: [40.3494, -88.9861], PENNSYLVANIA: [40.5907, -77.2097],
+  OHIO: [40.3887, -82.7649], GEORGIA: [33.0406, -83.6430], "NORTH CAROLINA": [35.6300, -79.8064],
+  MICHIGAN: [43.3266, -84.5360], "NEW JERSEY": [40.2989, -74.5210], VIRGINIA: [37.7693, -78.1699],
+  WASHINGTON: [47.4009, -121.4904], ARIZONA: [33.7297, -111.4312], MASSACHUSETTS: [42.2301, -71.5301],
+};
+
+const GLOBAL_CITIES_GEO = {
+  // Global Metros
+  london: [51.5074, -0.1278], paris: [48.8566, 2.3522], berlin: [52.5200, 13.4050],
+  rome: [41.9028, 12.4964], madrid: [40.4168, -3.7038], amsterdam: [52.3676, 4.9041],
+  tokyo: [35.6762, 139.6503], seoul: [37.5665, 126.9780], beijing: [39.9042, 116.4074],
+  shanghai: [31.2304, 121.4737], "hong kong": [22.3193, 114.1694], singapore: [1.3521, 103.8198],
+  sydney: [-33.8688, 151.2093], melbourne: [-37.8136, 144.9631], toronto: [43.6532, -79.3832],
+  vancouver: [49.2827, -123.1207], "mexico city": [19.4326, -99.1332], "buenos aires": [-34.6037, -58.3816],
+  dubai: [25.2048, 55.2708], "abu dhabi": [24.4539, 54.3773], riyadh: [24.7136, 46.6753],
+  cairo: [30.0444, 31.2357], istanbul: [41.0082, 28.9784], mumbai: [19.0760, 72.8777],
+  delhi: [28.6139, 77.2090], bangkok: [13.7563, 100.5018],
+  // US Major Cities
+  "new york": [40.7128, -74.0060], "los angeles": [34.0522, -118.2437], chicago: [41.8781, -87.6298],
+  houston: [29.7604, -95.3698], "san francisco": [37.7749, -122.4194], seattle: [47.6062, -122.3321],
+  miami: [25.7617, -80.1918], boston: [42.3601, -71.0589], atlanta: [33.7490, -84.3880],
+  dallas: [32.7767, -96.7970], austin: [30.2672, -97.7431], denver: [39.7392, -104.9903],
+};
+
+function normalizeGeoStr(str) {
+  if (!str) return "";
+  return String(str)
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function lookupGeoCoordinates(val) {
+  if (!val) return null;
+  const raw = String(val).trim();
+  const upper = raw.toUpperCase();
+
+  // 1. Countries (ISO code or country name)
+  if (COUNTRIES_GEO[upper]) return COUNTRIES_GEO[upper];
+
+  // 2. Brazilian States (Olist)
+  if (BRAZIL_STATES_GEO[upper]) return BRAZIL_STATES_GEO[upper];
+
+  // 3. US States
+  if (US_STATES_GEO[upper]) return US_STATES_GEO[upper];
+
+  // 4. Global Cities
+  const norm = normalizeGeoStr(raw);
+  if (GLOBAL_CITIES_GEO[norm]) return GLOBAL_CITIES_GEO[norm];
+
+  // 5. Brazilian Cities
+  if (BRAZIL_CITIES_GEO[norm]) return BRAZIL_CITIES_GEO[norm];
+
+  // 6. Fuzzy City Match
+  for (const [cityName, coords] of Object.entries(GLOBAL_CITIES_GEO)) {
+    if (norm.includes(cityName) || cityName.includes(norm)) return coords;
+  }
+  for (const [cityName, coords] of Object.entries(BRAZIL_CITIES_GEO)) {
+    if (norm.includes(cityName) || cityName.includes(norm)) return coords;
+  }
+
+  // 7. Fuzzy Country Match
+  for (const [countryName, coords] of Object.entries(COUNTRIES_GEO)) {
+    const cNorm = normalizeGeoStr(countryName);
+    if (cNorm.length > 3 && (norm.includes(cNorm) || cNorm.includes(norm))) {
+      return coords;
+    }
+  }
+
+  return null;
+}
+
+function resolveRowCoordinates(row, labelKey, latKey, lngKey) {
+  // 1. Direct explicit coordinates
+  if (latKey && lngKey && row[latKey] !== undefined && row[lngKey] !== undefined) {
+    const lat = parseFloat(row[latKey]);
+    const lng = parseFloat(row[lngKey]);
+    if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      return [lat, lng];
+    }
+  }
+
+  // 2. Try candidate location keys
+  const candidates = [
+    labelKey,
+    "customer_state",
+    "seller_state",
+    "state",
+    "uf",
+    "customer_city",
+    "seller_city",
+    "city",
+    "cidade",
+    "estado",
+    "location",
+    "country",
+  ];
+
+  for (const k of candidates) {
+    const val = row[k];
+    if (val !== undefined && val !== null) {
+      const coords = lookupGeoCoordinates(val);
+      if (coords) return coords;
+    }
+  }
+
+  // 3. Fallback scan string values in row
+  for (const v of Object.values(row)) {
+    if (typeof v === "string" && v.length <= 40) {
+      const coords = lookupGeoCoordinates(v);
+      if (coords) return coords;
+    }
+  }
+
+  return null;
+}
+
+/* ─── Map Controller (auto-fit & resize) ─── */
+function MapController({ markers }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+      if (markers.length > 0) {
+        const bounds = L.latLngBounds(markers.map((m) => [m.lat, m.lng]));
+        if (bounds.isValid()) {
+          map.fitBounds(bounds, { padding: [25, 25], maxZoom: 8 });
+        }
+      }
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [map, markers]);
+
+  return null;
+}
+
+/* ─── Map Chart Component ─── */
+function MapChart({ chart, height = 260 }) {
+  const latKey = chart.latKey || "lat";
+  const lngKey = chart.lngKey || "lng";
+  const labelKey = chart.markerLabel || chart.xAxisKey || "name";
+  const valKey = chart.valueKey || chart.dataKeys?.[0]?.key;
+  const data = Array.isArray(chart.data) ? chart.data : [];
+
+  const markers = useMemo(() => {
+    return data
+      .map((row, idx) => {
+        const coords = resolveRowCoordinates(row, labelKey, latKey, lngKey);
+        if (!coords) return null;
+        const displayLabel = row[labelKey] || row.customer_state || row.customer_city || `Location ${idx + 1}`;
+        return {
+          lat: coords[0],
+          lng: coords[1],
+          label: displayLabel,
+          value: valKey ? row[valKey] : chart.dataKeys?.[0]?.key ? row[chart.dataKeys[0].key] : undefined,
+          row,
+          idx,
+        };
+      })
+      .filter(Boolean);
+  }, [data, latKey, lngKey, labelKey, valKey, chart.dataKeys]);
+
+  if (markers.length === 0) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-[12px] text-[#4A4E58] gap-1 px-4 text-center">
+        <MapPin size={24} className="text-[#3A3E48] mb-1" />
+        <span>No geographic coordinates or recognized locations found</span>
+        <span className="text-[10px] text-[#3A3E48]">Supported: Brazilian states (SP, RJ, MG...), major cities, and coordinate pairs</span>
+      </div>
+    );
+  }
+
+  const avgLat = markers.reduce((s, m) => s + m.lat, 0) / markers.length;
+  const avgLng = markers.reduce((s, m) => s + m.lng, 0) / markers.length;
+
+  return (
+    <div style={{ height: `${height}px` }} className="w-full rounded overflow-hidden relative">
+      <MapContainer
+        center={[avgLat, avgLng]}
+        zoom={4}
+        scrollWheelZoom={true}
+        style={{ height: "100%", width: "100%", borderRadius: "6px" }}
+      >
+        <MapController markers={markers} />
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+        />
+        {markers.map((m) => (
+          <Marker key={m.idx} position={[m.lat, m.lng]}>
+            <Popup>
+              <div className="text-[12px] min-w-[140px] py-0.5">
+                <div className="font-semibold text-[#1A1D24] text-[13px] border-b pb-1 mb-1">
+                  {m.label}
+                </div>
+                {chart.dataKeys?.map((dk) => {
+                  const rawVal = m.row[dk.key];
+                  if (rawVal === undefined || rawVal === null) return null;
+                  return (
+                    <div key={dk.key} className="flex items-center justify-between gap-2 text-[11px] text-gray-600 mt-0.5">
+                      <span>{dk.name || dk.key}:</span>
+                      <strong className="text-gray-900 font-mono">
+                        {typeof rawVal === "number" ? rawVal.toLocaleString() : rawVal}
+                      </strong>
+                    </div>
+                  );
+                })}
+                {(!chart.dataKeys || chart.dataKeys.length === 0) && m.value !== undefined && (
+                  <div className="text-[11px] text-gray-700">
+                    Value: <b>{typeof m.value === "number" ? m.value.toLocaleString() : m.value}</b>
+                  </div>
+                )}
+              </div>
+            </Popup>
+          </Marker>
+        ))}
+      </MapContainer>
+    </div>
+  );
+}
+
+/* ─── Slider Chart ─── */
+function SliderChart({ chart, height = 260 }) {
+  const filterKey = chart.filterKey || chart.dataKeys?.[0]?.key || "value";
+  const xKey = chart.xAxisKey || "name";
+  const allData = useMemo(() => (Array.isArray(chart.data) ? chart.data : []), [chart.data]);
+
+  const numericValues = useMemo(
+    () => allData.map((r) => parseFloat(r[filterKey])).filter((v) => !isNaN(v)),
+    [allData, filterKey]
+  );
+  const dataMin = chart.sliderMin ?? (numericValues.length ? Math.min(...numericValues) : 0);
+  const dataMax = chart.sliderMax ?? (numericValues.length ? Math.max(...numericValues) : 100);
+  const step = chart.sliderStep ?? Math.max(1, Math.round((dataMax - dataMin) / 50));
+  const unit = chart.sliderUnit || "";
+
+  const [sliderValue, setSliderValue] = useState(dataMin);
+
+  const filtered = useMemo(
+    () => allData.filter((r) => parseFloat(r[filterKey]) >= sliderValue),
+    [allData, filterKey, sliderValue]
+  );
+
+  const dataKeys =
+    Array.isArray(chart.dataKeys) && chart.dataKeys.length > 0
+      ? chart.dataKeys
+      : [{ key: filterKey, name: filterKey.replace(/_/g, " "), color: "#5B8DEF" }];
+
+  const pct = dataMax > dataMin ? ((sliderValue - dataMin) / (dataMax - dataMin)) * 100 : 0;
+
+  return (
+    <div className="flex flex-col gap-3" style={{ height: `${height}px` }}>
+      {/* Slider control */}
+      <div className="flex flex-col gap-1.5 px-1">
+        <div className="flex items-center justify-between text-[11px]">
+          <span className="text-[#6B7075] flex items-center gap-1.5">
+            <SlidersHorizontal size={12} className="text-[#5B8DEF]" />
+            Threshold: <span className="text-[#D0D3D8] font-mono font-medium">{sliderValue.toLocaleString()}{unit && ` ${unit}`}</span>
+          </span>
+          <span className="text-[#4A4E58] font-mono">
+            {filtered.length}/{allData.length} items
+          </span>
+        </div>
+        <div className="relative">
+          <input
+            type="range"
+            min={dataMin}
+            max={dataMax}
+            step={step}
+            value={sliderValue}
+            onChange={(e) => setSliderValue(parseFloat(e.target.value))}
+            className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
+            style={{
+              background: `linear-gradient(to right, #5B8DEF 0%, #5B8DEF ${pct}%, #1E2128 ${pct}%, #1E2128 100%)`,
+            }}
+          />
+          <div className="flex justify-between text-[10px] text-[#3A3E48] mt-0.5 font-mono">
+            <span>{dataMin.toLocaleString()}{unit && ` ${unit}`}</span>
+            <span>{dataMax.toLocaleString()}{unit && ` ${unit}`}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Filtered bar chart */}
+      <div className="flex-1 min-h-0">
+        {filtered.length === 0 ? (
+          <div className="h-full flex items-center justify-center text-[12px] text-[#4A4E58]">
+            No items match this threshold
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={filtered} margin={MARGIN}>
+              <CartesianGrid {...GRID_PROPS} />
+              <XAxis dataKey={xKey} {...X_AXIS_PROPS} />
+              <YAxis {...Y_AXIS_PROPS} />
+              <Tooltip content={<ChartTooltip />} />
+              <Legend {...LEGEND_PROPS} />
+              {dataKeys.map((dk, i) => (
+                <Bar
+                  key={dk.key}
+                  dataKey={dk.key}
+                  name={dk.name || dk.key}
+                  fill={dk.color || COLORS[i % COLORS.length]}
+                  radius={[2, 2, 0, 0]}
+                  maxBarSize={40}
+                />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /* ─── Chart Card ─── */
 function ChartCard({ chart, onExpand, expanded = false }) {
@@ -237,7 +707,7 @@ function ChartCard({ chart, onExpand, expanded = false }) {
                       {ri + 1}
                     </td>
                     <td className="px-3 py-2 text-[#D0D3D8]">
-                      {String(row[xKey] ?? "")}
+                      {formatCellLabel(row[xKey], xKey)}
                     </td>
                     {dataKeys.map((dk) => (
                       <td
@@ -347,6 +817,10 @@ function ChartCard({ chart, onExpand, expanded = false }) {
               </Pie>
             </PieChart>
           </ResponsiveContainer>
+        ) : type === "map" ? (
+          <MapChart chart={chart} height={h} />
+        ) : type === "slider" ? (
+          <SliderChart chart={chart} height={h} />
         ) : (
           /* Default: Bar */
           <ResponsiveContainer width="100%" height="100%">
@@ -452,6 +926,140 @@ function exportPageToCsv(page, reportTitle) {
   URL.revokeObjectURL(url);
 }
 
+/* ─── XLSX Export (Power BI–compatible) ─── */
+function exportPageToXlsx(page, reportTitle) {
+  if (!page || !Array.isArray(page.charts) || page.charts.length === 0) return;
+
+  const wb = XLSX.utils.book_new();
+
+  /* Sheet for KPIs if present */
+  if (Array.isArray(page.kpis) && page.kpis.length > 0) {
+    const kpiRows = page.kpis.map((k) => ({
+      Metric: k.label,
+      Value: k.value,
+      Change: k.change || "",
+      Description: k.description || "",
+    }));
+    const kpiWs = XLSX.utils.json_to_sheet(kpiRows);
+    XLSX.utils.book_append_sheet(wb, kpiWs, "KPIs");
+  }
+
+  /* One sheet per chart */
+  const usedNames = new Set();
+  page.charts.forEach((chart, idx) => {
+    const xKey = chart.xAxisKey || "name";
+    const dks =
+      Array.isArray(chart.dataKeys) && chart.dataKeys.length > 0
+        ? chart.dataKeys
+        : [{ key: "value", name: "Value" }];
+
+    const rows = (Array.isArray(chart.data) ? chart.data : []).map((row) => {
+      const obj = {};
+      obj[xKey] = row[xKey] ?? "";
+      dks.forEach((dk) => {
+        obj[dk.name || dk.key] = row[dk.key] ?? "";
+      });
+      /* Include map-specific columns if present */
+      if (chart.latKey && row[chart.latKey] !== undefined) obj["Latitude"] = row[chart.latKey];
+      if (chart.lngKey && row[chart.lngKey] !== undefined) obj["Longitude"] = row[chart.lngKey];
+      return obj;
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    /* Generate a safe, unique sheet name (max 31 chars for Excel) */
+    let sheetName = (chart.title || `Chart ${idx + 1}`)
+      .replace(/[\\\/*?:\[\]]/g, "")
+      .slice(0, 28);
+    let suffix = 1;
+    while (usedNames.has(sheetName)) {
+      sheetName = sheetName.slice(0, 25) + ` (${suffix++})`;
+    }
+    usedNames.add(sheetName);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  });
+
+  /* Download */
+  const safeName = (page.name || reportTitle || "report")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "_");
+  XLSX.writeFile(wb, `${safeName}_data.xlsx`);
+}
+
+function exportReportToXlsx(report, activePage) {
+  if (!report || !Array.isArray(report.pages) || report.pages.length === 0) {
+    if (activePage) exportPageToXlsx(activePage, report?.title);
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+  const usedNames = new Set();
+  const isMultiPage = report.pages.length > 1;
+
+  report.pages.forEach((page, pIdx) => {
+    const prefix = isMultiPage ? `P${pIdx + 1} ` : "";
+
+    if (Array.isArray(page.kpis) && page.kpis.length > 0) {
+      const kpiRows = page.kpis.map((k) => ({
+        Metric: k.label,
+        Value: k.value,
+        Change: k.change || "",
+        Description: k.description || "",
+      }));
+      let kpiSheetName = `${prefix}KPIs`.slice(0, 28);
+      let kpiSuffix = 1;
+      while (usedNames.has(kpiSheetName)) {
+        kpiSheetName = `${prefix}KPIs_${kpiSuffix++}`.slice(0, 31);
+      }
+      usedNames.add(kpiSheetName);
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(kpiRows), kpiSheetName);
+    }
+
+    (Array.isArray(page.charts) ? page.charts : []).forEach((chart, cIdx) => {
+      const xKey = chart.xAxisKey || "name";
+      const dks =
+        Array.isArray(chart.dataKeys) && chart.dataKeys.length > 0
+          ? chart.dataKeys
+          : [{ key: "value", name: "Value" }];
+
+      const rows = (Array.isArray(chart.data) ? chart.data : []).map((row) => {
+        const obj = {};
+        obj[xKey] = row[xKey] ?? "";
+        dks.forEach((dk) => {
+          obj[dk.name || dk.key] = row[dk.key] ?? "";
+        });
+        /* Include map-specific columns if present */
+        if (chart.type === "map") {
+          const coords = resolveRowCoordinates(row, chart.markerLabel || xKey, chart.latKey, chart.lngKey);
+          if (coords) {
+            obj["Latitude"] = coords[0];
+            obj["Longitude"] = coords[1];
+          }
+        } else {
+          if (chart.latKey && row[chart.latKey] !== undefined) obj["Latitude"] = row[chart.latKey];
+          if (chart.lngKey && row[chart.lngKey] !== undefined) obj["Longitude"] = row[chart.lngKey];
+        }
+        return obj;
+      });
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const cleanTitle = (chart.title || `Chart ${cIdx + 1}`).replace(/[\\\/*?:\[\]]/g, "");
+      let sheetName = `${prefix}${cleanTitle}`.slice(0, 28);
+      let suffix = 1;
+      while (usedNames.has(sheetName)) {
+        sheetName = `${prefix}${cleanTitle}`.slice(0, 24) + ` (${suffix++})`;
+      }
+      usedNames.add(sheetName);
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    });
+  });
+
+  const safeName = (report.title || activePage?.name || "bi_report")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "_");
+  XLSX.writeFile(wb, `${safeName}_powerbi.xlsx`);
+}
+
 /* ════════════════════════════════════════════════════════════════
    Main Dashboard Component
    ════════════════════════════════════════════════════════════════ */
@@ -502,8 +1110,17 @@ export default function InteractiveDashboard({ spec }) {
           <button
             onClick={() => exportPageToCsv(page, report.title)}
             className="text-[11px] text-[#4A4E58] hover:text-[#8B8F98] transition-colors"
+            title="Export as CSV"
           >
-            Export
+            CSV
+          </button>
+          <button
+            onClick={() => exportReportToXlsx(report, page)}
+            className="text-[11px] text-[#4A4E58] hover:text-[#8B8F98] transition-colors flex items-center gap-1"
+            title="Export full report to Excel (.xlsx) — ready for Power BI Desktop"
+          >
+            <FileSpreadsheet size={12} />
+            XLSX (Power BI)
           </button>
           <button
             onClick={() => setIsFullscreen(!fs)}
@@ -562,9 +1179,7 @@ export default function InteractiveDashboard({ spec }) {
                   {kpi.label}
                 </div>
                 <div className="text-[20px] font-semibold text-[#E0E2E6] tracking-tight font-mono leading-none">
-                  {typeof kpi.value === "number"
-                    ? kpi.value.toLocaleString()
-                    : kpi.value}
+                  {formatKpiDisplay(kpi.value)}
                 </div>
                 {kpi.change && (
                   <div

@@ -1,26 +1,36 @@
 llm:
   models:
-    # 0. Default: Local Qwen 3.5 4B via Ollama (no API key needed, runs locally)
+    # 1. Google Gemini 3.8 Flash (Main agent, complex SQL, multi-step reasoning)
+    - provider: "gemini"
+      model_name: "gemini-3.8-flash"
+      name: "Gemini 3.8 Flash (Google)"
+
+    # 2. Google Gemini 3.5 Flash Lite (Fast classification, chart specs, formatting, summaries)
+    - provider: "gemini"
+      model_name: "gemini-3.5-flash-lite"
+      name: "Gemini 3.5 Flash Lite (Google)"
+
+    # 3. Local Qwen 3.5 4B via Ollama (no API key needed, runs locally)
     - provider: "ollama"
       model_name: "qwen3.5:4b"
       name: "Qwen 3.5 4B (Local)"
 
-    # 1. Qwen 3.8 27B on Groq (excellent structured output & tool calling)
+    # 4. Qwen 3.8 27B on Groq (fast structured output & tool calling)
     - provider: "groq"
       model_name: "qwen/qwen3.8-27b"
       name: "Qwen 3.8 27B (Groq)"
 
-    # 2. First Fallback: GPT-OSS 120B (Verified available, high reasoning & SQL generation)
+    # 5. GPT-OSS 120B on Groq (high reasoning & SQL generation)
     - provider: "groq"
       model_name: "openai/gpt-oss-120b"
       name: "GPT-OSS 120B (Groq)"
 
-    # 3. Second Fallback: GPT-OSS 20B (Verified available, fast fallback with separate rate limits)
+    # 6. GPT-OSS 20B on Groq (fast fallback)
     - provider: "groq"
       model_name: "openai/gpt-oss-20b"
       name: "GPT-OSS 20B (Groq)"
 
-    # 4. Optional OpenAI Fallback (activated automatically if OPENAI_API_KEY is present in .env)
+    # 7. OpenAI GPT-4o Mini
     - provider: "openai"
       model_name: "gpt-4o-mini"
       name: "GPT-4o Mini (OpenAI)"
