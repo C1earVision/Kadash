@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   ResponsiveContainer,
   BarChart,
@@ -443,6 +444,9 @@ function MapController({ markers }) {
 
 /* ─── Map Chart Component ─── */
 function MapChart({ chart, height = 260 }) {
+  const [tileStyle, setTileStyle] = useState("dark");
+  const cartoApiKey = import.meta.env?.VITE_CARTO_API_KEY;
+
   const latKey = chart.latKey || "lat";
   const lngKey = chart.lngKey || "lng";
   const labelKey = chart.markerLabel || chart.xAxisKey || "name";
@@ -482,6 +486,46 @@ function MapChart({ chart, height = 260 }) {
 
   return (
     <div style={{ height: `${height}px` }} className="w-full rounded overflow-hidden relative">
+      {/* Floating Basemap Style Switcher (all 100% free, no API key required) */}
+      <div className="absolute top-2 right-2 z-[1000] flex items-center bg-[#16181E]/90 backdrop-blur-md border border-[#262A32] rounded-md p-0.5 shadow-lg pointer-events-auto">
+        <button
+          type="button"
+          onClick={() => setTileStyle("dark")}
+          className={`px-2 py-0.5 text-[10px] rounded transition-all font-medium ${
+            tileStyle === "dark"
+              ? "bg-[#262A32] text-white shadow-sm"
+              : "text-gray-400 hover:text-white"
+          }`}
+          title="Dark Canvas (Free, No API key)"
+        >
+          Dark
+        </button>
+        <button
+          type="button"
+          onClick={() => setTileStyle("streets")}
+          className={`px-2 py-0.5 text-[10px] rounded transition-all font-medium ${
+            tileStyle === "streets"
+              ? "bg-[#262A32] text-white shadow-sm"
+              : "text-gray-400 hover:text-white"
+          }`}
+          title="OpenStreetMap Streets (Free, No API key)"
+        >
+          Streets
+        </button>
+        <button
+          type="button"
+          onClick={() => setTileStyle("satellite")}
+          className={`px-2 py-0.5 text-[10px] rounded transition-all font-medium ${
+            tileStyle === "satellite"
+              ? "bg-[#262A32] text-white shadow-sm"
+              : "text-gray-400 hover:text-white"
+          }`}
+          title="Satellite Imagery (Free, No API key)"
+        >
+          Satellite
+        </button>
+      </div>
+
       <MapContainer
         center={[avgLat, avgLng]}
         zoom={4}
@@ -489,32 +533,68 @@ function MapChart({ chart, height = 260 }) {
         style={{ height: "100%", width: "100%", borderRadius: "6px" }}
       >
         <MapController markers={markers} />
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-        />
+
+        {/* Tile Layers: Zero-key defaults with optional CARTO fallback */}
+        {tileStyle === "dark" && (
+          cartoApiKey ? (
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+              url={`https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=${cartoApiKey}`}
+            />
+          ) : (
+            <>
+              <TileLayer
+                attribution='Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ'
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+                maxZoom={16}
+              />
+              <TileLayer
+                attribution='&copy; Esri'
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
+                maxZoom={16}
+              />
+            </>
+          )
+        )}
+
+        {tileStyle === "streets" && (
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            maxZoom={19}
+          />
+        )}
+
+        {tileStyle === "satellite" && (
+          <TileLayer
+            attribution='Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            maxZoom={19}
+          />
+        )}
+
         {markers.map((m) => (
           <Marker key={m.idx} position={[m.lat, m.lng]}>
             <Popup>
               <div className="text-[12px] min-w-[140px] py-0.5">
-                <div className="font-semibold text-[#1A1D24] text-[13px] border-b pb-1 mb-1">
+                <div className="font-semibold text-white text-[13px] border-b border-[#262A32] pb-1 mb-1">
                   {m.label}
                 </div>
                 {chart.dataKeys?.map((dk) => {
                   const rawVal = m.row[dk.key];
                   if (rawVal === undefined || rawVal === null) return null;
                   return (
-                    <div key={dk.key} className="flex items-center justify-between gap-2 text-[11px] text-gray-600 mt-0.5">
+                    <div key={dk.key} className="flex items-center justify-between gap-2 text-[11px] text-gray-400 mt-0.5">
                       <span>{dk.name || dk.key}:</span>
-                      <strong className="text-gray-900 font-mono">
+                      <strong className="text-white font-mono">
                         {typeof rawVal === "number" ? rawVal.toLocaleString() : rawVal}
                       </strong>
                     </div>
                   );
                 })}
                 {(!chart.dataKeys || chart.dataKeys.length === 0) && m.value !== undefined && (
-                  <div className="text-[11px] text-gray-700">
-                    Value: <b>{typeof m.value === "number" ? m.value.toLocaleString() : m.value}</b>
+                  <div className="text-[11px] text-gray-300">
+                    Value: <b className="text-white">{typeof m.value === "number" ? m.value.toLocaleString() : m.value}</b>
                   </div>
                 )}
               </div>
@@ -851,18 +931,19 @@ function ChartCard({ chart, onExpand, expanded = false }) {
 /* ─── Chart Expand Modal ─── */
 function ChartModal({ chart, onClose }) {
   if (!chart) return null;
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-6"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 backdrop-blur-md p-6 animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-4xl bg-[#12141A] rounded p-6 relative"
+        className="w-full max-w-4xl bg-[#12141A] border border-[#262A32] rounded-lg p-6 relative shadow-2xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-1 rounded text-[#6B7075] hover:text-[#D0D3D8] transition-colors"
+          className="absolute top-4 right-4 p-1.5 rounded text-[#6B7075] hover:text-[#D0D3D8] hover:bg-[#1E2128] transition-colors cursor-pointer"
+          title="Close (Esc)"
         >
           <X size={16} />
         </button>
@@ -876,7 +957,8 @@ function ChartModal({ chart, onClose }) {
           <ChartCard chart={chart} expanded />
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -1079,6 +1161,17 @@ export default function InteractiveDashboard({ spec }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [modalChart, isFullscreen]);
 
+  /* Lock body scroll while expanded in fullscreen or modal */
+  useEffect(() => {
+    if (isFullscreen || modalChart) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [isFullscreen, modalChart]);
+
   const report = normalizeDashboardSpec(spec);
   if (!report || report.pages.length === 0) return null;
 
@@ -1244,26 +1337,36 @@ export default function InteractiveDashboard({ spec }) {
 
   return (
     <>
-      {/* Inline dashboard */}
-      <div className="my-5 pt-5 border-t border-[#1E2128]">{body(false)}</div>
-
-      {/* Fullscreen overlay */}
-      {isFullscreen && (
-        <div className="fixed inset-0 z-50 bg-[#0A0C10] overflow-y-auto">
-          <div className="max-w-6xl mx-auto px-6 py-6 relative">
-            <button
-              onClick={() => setIsFullscreen(false)}
-              className="absolute top-6 right-6 p-1.5 rounded text-[#6B7075] hover:text-[#D0D3D8] transition-colors"
-              title="Close (Esc)"
-            >
-              <X size={16} />
-            </button>
-            {body(true)}
+      {/* Inline dashboard (only rendered when NOT expanded to avoid duplicate map instances) */}
+      {!isFullscreen ? (
+        <div className="my-5 pt-5 border-t border-[#1E2128]">{body(false)}</div>
+      ) : (
+        <div className="my-5 pt-5 border-t border-[#1E2128]">
+          <div className="p-4 rounded border border-dashed border-[#262A32] bg-[#12141A]/50 text-center text-[12px] text-[#6B7075]">
+            Dashboard is open in expanded view
           </div>
         </div>
       )}
 
-      {/* Chart expand modal */}
+      {/* Fullscreen overlay portaled to document.body */}
+      {isFullscreen &&
+        createPortal(
+          <div className="fixed inset-0 z-[9999] bg-[#0A0C10] overflow-y-auto animate-in fade-in duration-150">
+            <div className="max-w-6xl mx-auto px-6 py-8 relative">
+              <button
+                onClick={() => setIsFullscreen(false)}
+                className="absolute top-6 right-6 p-2 rounded-lg bg-[#14161C] border border-[#262A32] text-[#6B7075] hover:text-[#D0D3D8] hover:bg-[#1E2128] transition-all shadow-md z-10 cursor-pointer"
+                title="Close (Esc)"
+              >
+                <X size={16} />
+              </button>
+              {body(true)}
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* Chart expand modal (handled via portal inside ChartModal) */}
       {modalChart && (
         <ChartModal chart={modalChart} onClose={() => setModalChart(null)} />
       )}
